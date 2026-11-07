@@ -23,6 +23,7 @@ Also available: [`.zip` of the `.app`](https://github.com/alebastr12/cursor-limi
 - **Claude** — auto from Claude Desktop `sessionKey` when available, or **Подключить Claude** login window / browser cookie
 - Secrets only in macOS Keychain (`local.cursor-limits-tray`) — never hardcoded
 - **No Keychain spam on poll:** tokens are cached in memory for the process; Chrome/Cursor/Claude Safe Storage is read at most once (silent), and interactive “Allow” is once per browser until you reconnect
+- **Tray stays running:** closing a window (✕ / ⌘W) only hides it — use **Выйти** in the popover (or ⌘Q) to quit
 
 ## Requirements
 
@@ -41,8 +42,8 @@ open dist/CursorLimitsTray.app
 Package distributables:
 
 ```bash
-./Scripts/package-dmg.sh 0.2.0      # dist/CursorLimitsTray-0.2.0.dmg
-./Scripts/package-release.sh 0.2.0  # dist/CursorLimitsTray-0.2.0.zip
+./Scripts/package-dmg.sh 0.2.2      # dist/CursorLimitsTray-0.2.2.dmg
+./Scripts/package-release.sh 0.2.2  # dist/CursorLimitsTray-0.2.2.zip
 ```
 
 Optional after install: popover → **Настройки…** → **Открывать при входе**.
@@ -54,6 +55,7 @@ Optional after install: popover → **Настройки…** → **Открыв
 3. If ChatGPT shows `G—`, click **Подключить ChatGPT** and sign in.
 4. If Claude shows `A—`, open Claude Desktop (often enough) or click **Подключить Claude**.
 5. Cursor usually works if the Cursor desktop app is already signed in.
+6. **Close vs Quit:** ✕ / ⌘W closes windows only (tray keeps polling). **Выйти** in the popover (or ⌘Q) quits.
 
 ## Keychain / permissions (what you may see once)
 

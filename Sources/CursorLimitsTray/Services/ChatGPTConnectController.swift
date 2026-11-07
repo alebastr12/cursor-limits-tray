@@ -24,7 +24,7 @@ final class ChatGPTConnectController: NSObject, WKNavigationDelegate, WKUIDelega
         // Accessory (menu-bar) apps often fail to deliver mouse events to sheets/panels.
         if previousActivationPolicy == nil {
             previousActivationPolicy = NSApp.activationPolicy()
-            NSApp.setActivationPolicy(.regular)
+            TrayLifecycle.beginShowingWindow()
         }
 
         if let panel, panel.isVisible {
@@ -52,10 +52,9 @@ final class ChatGPTConnectController: NSObject, WKNavigationDelegate, WKUIDelega
         webView = nil
         statusLabel = nil
         onConnected = nil
-        if let previous = previousActivationPolicy {
-            NSApp.setActivationPolicy(previous)
-            previousActivationPolicy = nil
-        }
+        previousActivationPolicy = nil
+        // Closing login UI must not quit — return to tray-only if nothing else is open.
+        TrayLifecycle.returnToTrayOnlyIfNoUserWindows()
     }
 
     // MARK: - UI
@@ -143,14 +142,14 @@ final class ChatGPTConnectController: NSObject, WKNavigationDelegate, WKUIDelega
     }
 
     @objc func windowWillClose(_ notification: Notification) {
-        // Red traffic-light close — restore activation policy.
+        // Red traffic-light / Cmd+W — hide only; tray keeps polling.
         panel = nil
         webView = nil
         statusLabel = nil
         onConnected = nil
-        if let previous = previousActivationPolicy {
-            NSApp.setActivationPolicy(previous)
-            previousActivationPolicy = nil
+        previousActivationPolicy = nil
+        DispatchQueue.main.async {
+            TrayLifecycle.returnToTrayOnlyIfNoUserWindows()
         }
     }
 

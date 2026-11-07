@@ -18,7 +18,7 @@ final class ClaudeConnectController: NSObject, WKNavigationDelegate, WKUIDelegat
         didEmit = false
         if previousActivationPolicy == nil {
             previousActivationPolicy = NSApp.activationPolicy()
-            NSApp.setActivationPolicy(.regular)
+            TrayLifecycle.beginShowingWindow()
         }
         if let panel, panel.isVisible {
             panel.makeKeyAndOrderFront(nil)
@@ -42,10 +42,8 @@ final class ClaudeConnectController: NSObject, WKNavigationDelegate, WKUIDelegat
         webView = nil
         statusLabel = nil
         onConnected = nil
-        if let previous = previousActivationPolicy {
-            NSApp.setActivationPolicy(previous)
-            previousActivationPolicy = nil
-        }
+        previousActivationPolicy = nil
+        TrayLifecycle.returnToTrayOnlyIfNoUserWindows()
     }
 
     private func makePanel() -> NSPanel {
@@ -123,9 +121,9 @@ final class ClaudeConnectController: NSObject, WKNavigationDelegate, WKUIDelegat
         webView = nil
         statusLabel = nil
         onConnected = nil
-        if let previous = previousActivationPolicy {
-            NSApp.setActivationPolicy(previous)
-            previousActivationPolicy = nil
+        previousActivationPolicy = nil
+        DispatchQueue.main.async {
+            TrayLifecycle.returnToTrayOnlyIfNoUserWindows()
         }
     }
 

@@ -139,6 +139,7 @@ struct PopoverView: View {
             Button("Настройки…") { showSettings = true }
             Button("Выйти") { NSApplication.shared.terminate(nil) }
                 .keyboardShortcut("q", modifiers: .command)
+                .help("Полностью выйти из приложения. Закрытие окон (✕ / ⌘W) оставляет трей.")
         }
         .buttonStyle(.borderless)
         .padding(.horizontal, 16)
