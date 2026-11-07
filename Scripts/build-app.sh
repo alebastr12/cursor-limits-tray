@@ -4,11 +4,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-BUILD_DIR="$ROOT/.build"
 APP_DIR="$ROOT/dist/CursorLimitsTray.app"
 CONTENTS="$APP_DIR/Contents"
 MACOS="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
+
+# Ensure AppIcon.icns exists
+if [[ ! -f "$ROOT/Resources/AppIcon.icns" ]]; then
+  "$ROOT/Scripts/build-icons.sh"
+fi
 
 swift build -c release --product CursorLimitsTray
 
@@ -17,9 +21,14 @@ rm -rf "$APP_DIR"
 mkdir -p "$MACOS" "$RESOURCES"
 cp "$BIN" "$MACOS/CursorLimitsTray"
 cp "$ROOT/Resources/Info.plist" "$CONTENTS/Info.plist"
+cp "$ROOT/Resources/AppIcon.icns" "$RESOURCES/AppIcon.icns"
+cp "$ROOT/Resources/MenuBarGlyph.png" "$RESOURCES/MenuBarGlyph.png"
 chmod +x "$MACOS/CursorLimitsTray"
 
 # Ad-hoc sign so Keychain / local network prompts work more predictably.
 codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1 || true
+
+# Touch so Finder refreshes icon cache for this path
+touch "$APP_DIR"
 
 echo "Built $APP_DIR"

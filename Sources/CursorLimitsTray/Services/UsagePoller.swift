@@ -13,8 +13,8 @@ final class UsagePoller: ObservableObject {
     @Published private(set) var claudeConnected = false
     /// True after user connected Claude (secrets in app Keychain). Hidden from tray/popover until then.
     @Published private(set) var claudeConfigured = false
-    /// Compact menu-bar string, e.g. `C75% · G40%` or `C75% · G40% · A60%` once Claude is connected.
-    @Published private(set) var menuBarText: String = "C— · G—"
+    /// Compact menu-bar: only live % for connected providers (e.g. `C75% · G40%`). Empty if none.
+    @Published private(set) var menuBarText: String = ""
     @Published private(set) var cursorSeverity: LimitSeverity = .unknown
     @Published private(set) var chatGPTSeverity: LimitSeverity = .unknown
     @Published private(set) var claudeSeverity: LimitSeverity = .unknown
@@ -70,20 +70,25 @@ final class UsagePoller: ObservableObject {
             // Launch: Cursor from app Keychain / silent Safe Storage only — ZERO SecurityAgent dialogs.
             // Do NOT auto-import Chrome/Claude cookies (that was the 3-dialog cascade).
             _ = SessionSecrets.cursorAuth()
-            // Hydrate from app Keychain only — no Chrome/Claude Safe Storage on launch.
-            chatGPTConnected = SessionSecrets.get(.chatGPTSessionCookie) != nil
-                || SessionSecrets.get(.chatGPTBearerOverride) != nil
-            refreshClaudeConfiguredFlag()
+            refreshConfiguredFlags()
             await refresh()
         }
         restartTimer()
     }
 
-    private func refreshClaudeConfiguredFlag() {
+    private var hasChatGPTSecrets: Bool {
+        SessionSecrets.get(.chatGPTSessionCookie) != nil
+            || SessionSecrets.get(.chatGPTBearerOverride) != nil
+    }
+
+    private func refreshConfiguredFlags() {
         claudeConfigured = SessionSecrets.get(.claudeSessionCookie) != nil
             || SessionSecrets.get(.claudeBearerOverride) != nil
         if !claudeConfigured {
             claudeConnected = false
+        }
+        if !hasChatGPTSecrets {
+            chatGPTConnected = false
         }
     }
 
@@ -260,23 +265,28 @@ final class UsagePoller: ObservableObject {
             next.cursor = ProviderSnapshot(name: "Cursor", status: "Нет связи", rows: next.cursor.rows, fetchedAt: next.cursor.fetchedAt, error: humanize(error))
         }
 
-        // ChatGPT — cached cookies only. Do NOT re-scan browsers here.
-        do {
-            next.chatGPT = try await ChatGPTUsageClient.fetch(auth: .init(
-                sessionCookie: SessionSecrets.get(.chatGPTSessionCookie),
-                bearerToken: SessionSecrets.get(.chatGPTBearerOverride)
-            ))
-            chatGPTConnected = next.chatGPT.error == nil && !next.chatGPT.rows.isEmpty
-            if chatGPTConnected {
-                let src = chatGPTAutoSource.map { " · \($0)" } ?? ""
-                next.chatGPT.status = next.chatGPT.status.contains("Подключено") ? next.chatGPT.status : "Подключено\(src)"
+        // ChatGPT — only if authorized (app Keychain secrets). Never show unauthorized.
+        refreshConfiguredFlags()
+        if hasChatGPTSecrets {
+            do {
+                next.chatGPT = try await ChatGPTUsageClient.fetch(auth: .init(
+                    sessionCookie: SessionSecrets.get(.chatGPTSessionCookie),
+                    bearerToken: SessionSecrets.get(.chatGPTBearerOverride)
+                ))
+                chatGPTConnected = next.chatGPT.error == nil && !next.chatGPT.rows.isEmpty
+                if chatGPTConnected {
+                    let src = chatGPTAutoSource.map { " · \($0)" } ?? ""
+                    next.chatGPT.status = next.chatGPT.status.contains("Подключено") ? next.chatGPT.status : "Подключено\(src)"
+                }
+            } catch {
+                chatGPTConnected = false
+                next.chatGPT = ProviderSnapshot(name: "ChatGPT", status: "", rows: [], fetchedAt: next.chatGPT.fetchedAt, error: nil)
             }
-        } catch {
+        } else {
             chatGPTConnected = false
-            next.chatGPT = ProviderSnapshot(name: "ChatGPT", status: "Не подключено", rows: [], fetchedAt: next.chatGPT.fetchedAt, error: humanizeChatGPT(error))
+            next.chatGPT = ProviderSnapshot(name: "ChatGPT", status: "", rows: [], fetchedAt: nil, error: nil)
         }
 
-        refreshClaudeConfiguredFlag()
         if claudeConfigured {
             do {
                 next.claude = try await ClaudeUsageClient.fetch(auth: .init(
@@ -289,7 +299,7 @@ final class UsagePoller: ObservableObject {
                 }
             } catch {
                 claudeConnected = false
-                next.claude = ProviderSnapshot(name: "Claude", status: "Нет связи", rows: [], fetchedAt: next.claude.fetchedAt, error: humanizeClaude(error))
+                next.claude = ProviderSnapshot(name: "Claude", status: "", rows: [], fetchedAt: next.claude.fetchedAt, error: nil)
             }
         } else {
             claudeConnected = false
@@ -297,26 +307,39 @@ final class UsagePoller: ObservableObject {
         }
 
         snapshot = next
-        lastError = [next.cursor.error, next.chatGPT.error, claudeConfigured ? next.claude.error : nil].compactMap { $0 }.first
+        lastError = [
+            cursorConnected ? next.cursor.error : nil,
+            chatGPTConnected ? next.chatGPT.error : nil,
+            claudeConnected ? next.claude.error : nil
+        ].compactMap { $0 }.first
         publishMenuBar()
     }
 
     private func publishMenuBar() {
-        let cLeft = remainingPercent(from: snapshot.cursor)
-        let gLeft = remainingPercent(from: snapshot.chatGPT)
-        cursorSeverity = severity(remaining: cLeft, connected: cursorConnected)
-        chatGPTSeverity = severity(remaining: gLeft, connected: chatGPTConnected)
-        let c = cLeft.map { String(format: "%.0f%%", $0) } ?? "—"
-        let g = gLeft.map { String(format: "%.0f%%", $0) } ?? "—"
-        var parts = ["C\(c)", "G\(g)"]
-        if claudeConfigured {
-            let aLeft = remainingPercent(from: snapshot.claude)
-            claudeSeverity = severity(remaining: aLeft, connected: claudeConnected)
-            let a = aLeft.map { String(format: "%.0f%%", $0) } ?? "—"
-            parts.append("A\(a)")
+        // Only live % for connected providers — never C— / G— / A— placeholders.
+        var parts: [String] = []
+
+        if cursorConnected, let cLeft = remainingPercent(from: snapshot.cursor) {
+            cursorSeverity = severity(remaining: cLeft, connected: true)
+            parts.append(String(format: "C%.0f%%", cLeft))
+        } else {
+            cursorSeverity = .unknown
+        }
+
+        if chatGPTConnected, let gLeft = remainingPercent(from: snapshot.chatGPT) {
+            chatGPTSeverity = severity(remaining: gLeft, connected: true)
+            parts.append(String(format: "G%.0f%%", gLeft))
+        } else {
+            chatGPTSeverity = .unknown
+        }
+
+        if claudeConnected, let aLeft = remainingPercent(from: snapshot.claude) {
+            claudeSeverity = severity(remaining: aLeft, connected: true)
+            parts.append(String(format: "A%.0f%%", aLeft))
         } else {
             claudeSeverity = .unknown
         }
+
         menuBarText = parts.joined(separator: " · ")
     }
 

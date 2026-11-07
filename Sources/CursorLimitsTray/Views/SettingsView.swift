@@ -87,11 +87,9 @@ struct SettingsView: View {
                     detail: claudeDetail
                 )
 
-                if !poller.claudeConfigured {
-                    Text("После подключения Claude появится в меню-баре (A…) и в поповере.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text("В трее и поповере — только подключённые сервисы с живым %. Подключение только здесь.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
                 if !poller.claudeConfigured || !poller.claudeConnected {
                     Button {
@@ -125,7 +123,8 @@ struct SettingsView: View {
                     .frame(maxWidth: .infinity)
                 }
 
-                if poller.chatGPTNeedsFDA || poller.claudeNeedsFDA {
+                if (poller.chatGPTNeedsFDA && !poller.chatGPTConnected)
+                    || (poller.claudeNeedsFDA && !poller.claudeConfigured) {
                     Button("Открыть «Полный доступ к диску»") {
                         poller.openFullDiskAccessSettings()
                     }

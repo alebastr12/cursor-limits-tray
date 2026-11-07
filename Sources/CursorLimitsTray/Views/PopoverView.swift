@@ -5,6 +5,10 @@ struct PopoverView: View {
     @State private var showSettings = false
     @Environment(\.openWindow) private var openWindow
 
+    private var anyConnected: Bool {
+        poller.cursorConnected || poller.chatGPTConnected || poller.claudeConnected
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
@@ -14,27 +18,29 @@ struct PopoverView: View {
                     if poller.snapshot.isDemo {
                         banner("Демо-данные. Выключите демо в Настройках для живых лимитов.", color: .orange)
                     }
-                    if poller.chatGPTNeedsFDA && !poller.chatGPTConnected {
-                        fdaBanner
+
+                    if !anyConnected && !poller.snapshot.isDemo {
+                        emptyState
                     }
 
-                    ProviderSection(
-                        snapshot: poller.snapshot.cursor,
-                        connected: poller.cursorConnected
-                    )
+                    if poller.cursorConnected {
+                        ProviderSection(
+                            snapshot: poller.snapshot.cursor,
+                            connected: true
+                        )
+                    }
 
-                    ProviderSection(
-                        snapshot: poller.snapshot.chatGPT,
-                        connected: poller.chatGPTConnected,
-                        connectTitle: poller.chatGPTConnected ? nil : "Подключить ChatGPT",
-                        onConnect: { openChatGPTConnect() }
-                    )
+                    if poller.chatGPTConnected {
+                        ProviderSection(
+                            snapshot: poller.snapshot.chatGPT,
+                            connected: true
+                        )
+                    }
 
-                    // Claude only after connect (Settings → Подключить Claude) — no empty A— / section.
-                    if poller.claudeConfigured {
+                    if poller.claudeConnected {
                         ProviderSection(
                             snapshot: poller.snapshot.claude,
-                            connected: poller.claudeConnected
+                            connected: true
                         )
                     }
                 }
@@ -43,7 +49,7 @@ struct PopoverView: View {
             Divider().opacity(0.35)
             footer
         }
-        .frame(width: 360, height: poller.claudeConfigured ? 560 : 480)
+        .frame(width: 360, height: popoverHeight)
         .background(WindowBackground())
         .sheet(isPresented: $showSettings) {
             SettingsView(poller: poller)
@@ -54,16 +60,35 @@ struct PopoverView: View {
         .onAppear { poller.start() }
     }
 
-    private func openChatGPTConnect() {
-        // Detached floating panel — survives MenuBarExtra popover dismiss.
-        ChatGPTConnectController.shared.present { [poller] header in
-            poller.saveChatGPTCookie(header)
+    private var popoverHeight: CGFloat {
+        let n = [poller.cursorConnected, poller.chatGPTConnected, poller.claudeConnected].filter { $0 }.count
+        switch n {
+        case 0: return 280
+        case 1: return 360
+        case 2: return 480
+        default: return 560
         }
+    }
+
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Нет подключённых сервисов")
+                .font(.headline)
+            Text("В трее и здесь показываются только авторизованные провайдеры. Подключите Cursor, ChatGPT или Claude в Настройках.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Настройки…") { showSettings = true }
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
     }
 
     private var header: some View {
         HStack(spacing: 10) {
-            Image(systemName: "gauge.with.dots.needle.67percent")
+            Image(systemName: "chart.bar.fill")
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(Color.accentColor)
             VStack(alignment: .leading, spacing: 2) {
@@ -84,33 +109,18 @@ struct PopoverView: View {
 
     private var subtitle: String {
         let interval = Int(AppPreferences.pollIntervalSeconds)
-        let claudeAt = poller.claudeConfigured ? poller.snapshot.claude.fetchedAt : nil
-        if let t = poller.snapshot.cursor.fetchedAt
-            ?? poller.snapshot.chatGPT.fetchedAt
-            ?? claudeAt {
+        let dates = [
+            poller.cursorConnected ? poller.snapshot.cursor.fetchedAt : nil,
+            poller.chatGPTConnected ? poller.snapshot.chatGPT.fetchedAt : nil,
+            poller.claudeConnected ? poller.snapshot.claude.fetchedAt : nil
+        ].compactMap { $0 }
+        if let t = dates.max() {
             let f = RelativeDateTimeFormatter()
             f.locale = Locale(identifier: "ru_RU")
             f.unitsStyle = .abbreviated
             return "Обновлено \(f.localizedString(for: t, relativeTo: Date())) · каждые \(interval) с"
         }
         return "Опрос каждые \(interval) с"
-    }
-
-    private var fdaBanner: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Чтобы взять сессию ChatGPT из Chrome автоматически, разрешите Полный доступ к диску. Предпочтительнее «Подключить ChatGPT» без Keychain.")
-                .font(.caption)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack {
-                Button("Открыть настройки") { poller.openFullDiskAccessSettings() }
-                if !poller.chatGPTConnected {
-                    Button("ChatGPT") { openChatGPTConnect() }
-                        .buttonStyle(.borderedProminent)
-                }
-            }
-        }
-        .padding(10)
-        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private func banner(_ text: String, color: Color) -> some View {
@@ -141,8 +151,6 @@ struct PopoverView: View {
 private struct ProviderSection: View {
     let snapshot: ProviderSnapshot
     var connected: Bool = false
-    var connectTitle: String? = nil
-    var onConnect: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -153,14 +161,7 @@ private struct ProviderSection: View {
                 statusChip
             }
 
-            if let connectTitle, let onConnect {
-                Button(connectTitle, action: onConnect)
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .frame(maxWidth: .infinity)
-            }
-
-            if let error = snapshot.error, snapshot.rows.isEmpty, connectTitle == nil {
+            if let error = snapshot.error, snapshot.rows.isEmpty {
                 Text(error)
                     .font(.caption)
                     .foregroundStyle(.red)

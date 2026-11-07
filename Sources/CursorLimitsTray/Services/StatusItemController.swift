@@ -20,24 +20,36 @@ final class StatusItemController: NSObject {
         item.button?.target = self
         item.button?.action = #selector(togglePopover(_:))
         item.button?.imagePosition = .imageLeading
-        item.button?.setAccessibilityTitle("Лимиты Cursor / ChatGPT")
+        item.button?.setAccessibilityTitle("Лимиты")
         statusItem = item
 
         let pop = NSPopover()
         pop.behavior = .transient
         pop.animates = true
-        pop.contentSize = NSSize(width: 360, height: 480)
+        pop.contentSize = NSSize(width: 360, height: 280)
         pop.contentViewController = NSHostingController(rootView: PopoverView(poller: poller))
         popover = pop
 
         poller.$menuBarText
-            .combineLatest(poller.$cursorSeverity, poller.$chatGPTSeverity, poller.$claudeSeverity)
-            .combineLatest(poller.$claudeConfigured)
+            .combineLatest(poller.$cursorConnected, poller.$chatGPTConnected, poller.$claudeConnected)
             .receive(on: RunLoop.main)
-            .sink { [weak self] sev, configured in
-                let (text, cSev, gSev, aSev) = sev
-                self?.applyTitle(text, cursor: cSev, chat: gSev, claude: aSev, showClaude: configured)
-                self?.popover?.contentSize = NSSize(width: 360, height: configured ? 560 : 480)
+            .sink { [weak self] text, cOK, gOK, aOK in
+                guard let self, let poller = self.poller else { return }
+                self.applyTitle(
+                    text,
+                    cursor: poller.cursorSeverity,
+                    chat: poller.chatGPTSeverity,
+                    claude: poller.claudeSeverity
+                )
+                let n = [cOK, gOK, aOK].filter { $0 }.count
+                let height: CGFloat
+                switch n {
+                case 0: height = 280
+                case 1: height = 360
+                case 2: height = 480
+                default: height = 560
+                }
+                self.popover?.contentSize = NSSize(width: 360, height: height)
             }
             .store(in: &cancellables)
 
@@ -45,8 +57,7 @@ final class StatusItemController: NSObject {
             poller.menuBarText,
             cursor: poller.cursorSeverity,
             chat: poller.chatGPTSeverity,
-            claude: poller.claudeSeverity,
-            showClaude: poller.claudeConfigured
+            claude: poller.claudeSeverity
         )
         poller.start()
     }
@@ -55,8 +66,7 @@ final class StatusItemController: NSObject {
         _ text: String,
         cursor: LimitSeverity,
         chat: LimitSeverity,
-        claude: LimitSeverity,
-        showClaude: Bool
+        claude: LimitSeverity
     ) {
         guard let button = statusItem?.button else { return }
 
@@ -66,19 +76,27 @@ final class StatusItemController: NSObject {
             .foregroundColor: NSColor.labelColor
         ])
 
+        // Color whatever letters are actually present (no placeholders).
         colorSegment(in: attr, letter: "C", severity: cursor, font: font)
         colorSegment(in: attr, letter: "G", severity: chat, font: font)
-        if showClaude {
-            colorSegment(in: attr, letter: "A", severity: claude, font: font)
-        }
+        colorSegment(in: attr, letter: "A", severity: claude, font: font)
 
         button.attributedTitle = attr
-        button.setAccessibilityTitle(showClaude ? "Лимиты Cursor / ChatGPT / Claude" : "Лимиты Cursor / ChatGPT")
+        button.setAccessibilityTitle(text.isEmpty ? "Лимиты" : "Лимиты \(text)")
 
-        let image = NSImage(systemSymbolName: "gauge.with.dots.needle.67percent", accessibilityDescription: nil)
-        image?.isTemplate = true
+        let image: NSImage?
+        if let url = Bundle.main.url(forResource: "MenuBarGlyph", withExtension: "png"),
+           let custom = NSImage(contentsOf: url) {
+            custom.isTemplate = true
+            custom.size = NSSize(width: 16, height: 16)
+            image = custom
+        } else {
+            let sym = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: nil)
+            sym?.isTemplate = true
+            image = sym
+        }
         button.image = image
-        button.imagePosition = .imageLeading
+        button.imagePosition = text.isEmpty ? .imageOnly : .imageLeading
     }
 
     private func colorSegment(
