@@ -1,0 +1,12 @@
+.build/
+dist/
+.DS_Store
+*.xcuserstate
+DerivedData/
+*.moved-aside
+xcuserdata/
+.env
+.env.*
+*.pem
+secrets/
+*.cookie
