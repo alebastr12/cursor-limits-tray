@@ -5,10 +5,10 @@ import LocalAuthentication
 
 enum ChromiumCrypto {
     private static var passwordCache: [String: String] = [:]
-    /// Services we already showed a Keychain dialog for this process (Allow or Deny).
-    private static var promptedThisProcess: Set<String> = []
-    /// Persisted: interactive prompt already used for this Safe Storage service (until reconnect).
-    private static let promptedDefaultsPrefix = "safeStorage.prompted."
+
+    /// Hard cap: at most ONE interactive foreign Keychain unlock until Reset / reconnect.
+    private static let globalUnlockDefaultsKey = "safeStorage.globalInteractiveUnlockUsed"
+    private static var interactiveUnlockUsedThisProcess = false
 
     static func cacheKey(service: String, account: String) -> String {
         "\(service)|\(account)"
@@ -16,52 +16,53 @@ enum ChromiumCrypto {
 
     static func clearSessionCaches() {
         passwordCache.removeAll()
-        promptedThisProcess.removeAll()
+        interactiveUnlockUsedThisProcess = false
     }
 
+    /// Call from «Сбросить секреты» so the user may unlock once again.
     static func clearPromptBudget() {
-        promptedThisProcess.removeAll()
-        let defaults = UserDefaults.standard
-        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(promptedDefaultsPrefix) {
-            defaults.removeObject(forKey: key)
-        }
+        clearSessionCaches()
+        UserDefaults.standard.removeObject(forKey: globalUnlockDefaultsKey)
     }
 
-    private static func hasUsedPromptBudget(service: String) -> Bool {
-        if promptedThisProcess.contains(service) { return true }
-        return UserDefaults.standard.bool(forKey: promptedDefaultsPrefix + service)
+    static var hasUsedGlobalInteractiveUnlock: Bool {
+        interactiveUnlockUsedThisProcess || UserDefaults.standard.bool(forKey: globalUnlockDefaultsKey)
     }
 
-    private static func markPromptUsed(service: String) {
-        promptedThisProcess.insert(service)
-        UserDefaults.standard.set(true, forKey: promptedDefaultsPrefix + service)
+    private static func markGlobalInteractiveUnlockUsed() {
+        interactiveUnlockUsedThisProcess = true
+        UserDefaults.standard.set(true, forKey: globalUnlockDefaultsKey)
     }
 
     /// Read Chromium / Electron Safe Storage password.
-    /// - Silent (`allowPrompt: false`): never shows UI; uses memory cache; `kSecUseAuthenticationUIFail`.
-    /// - Interactive: at most one prompt per Safe Storage service until reconnect clears budget.
+    /// - Silent: never shows UI.
+    /// - Interactive: at most **one** foreign unlock app-wide until Reset (not per browser).
     static func keychainPassword(service: String, account: String = "Chrome", allowPrompt: Bool = false) -> String? {
         let key = cacheKey(service: service, account: account)
         if let cached = passwordCache[key] { return cached }
 
-        if allowPrompt {
-            // Already prompted for this browser Safe Storage (Allow Always or Deny) — don't spam.
-            if hasUsedPromptBudget(service: service) {
-                return keychainPasswordSilent(service: service, account: account, cacheKey: key)
-            }
-            markPromptUsed(service: service)
-            if let pwd = keychainPasswordInteractive(service: service, account: account) {
-                passwordCache[key] = pwd
-                return pwd
-            }
+        if let silent = keychainPasswordSilent(service: service, account: account) {
+            passwordCache[key] = silent
+            return silent
+        }
+
+        guard allowPrompt else { return nil }
+        guard !hasUsedGlobalInteractiveUnlock else {
+            // Budget spent — never cascade Chrome → Brave → Edge dialogs.
             return nil
         }
 
-        return keychainPasswordSilent(service: service, account: account, cacheKey: key)
+        markGlobalInteractiveUnlockUsed()
+        if let pwd = keychainPasswordInteractive(service: service, account: account) {
+            passwordCache[key] = pwd
+            return pwd
+        }
+        return nil
     }
 
-    private static func keychainPasswordSilent(service: String, account: String, cacheKey: String) -> String? {
+    private static func keychainPasswordSilent(service: String, account: String) -> String? {
         var query: [String: Any] = baseQuery(service: service, account: account)
+        // Belt-and-suspenders: both APIs so SecurityAgent never appears on poll/launch.
         query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
         let ctx = LAContext()
         ctx.interactionNotAllowed = true
@@ -73,7 +74,6 @@ enum ChromiumCrypto {
               let pwd = String(data: data, encoding: .utf8), !pwd.isEmpty else {
             return nil
         }
-        passwordCache[cacheKey] = pwd
         return pwd
     }
 
@@ -121,7 +121,6 @@ enum ChromiumCrypto {
         return result == kCCSuccess ? derived : nil
     }
 
-    /// Chromium cookie / safeStorage v10 AES-128-CBC (IV = 16 spaces).
     static func decryptV10(_ raw: Data, password: String) -> Data? {
         guard raw.count > 3 else { return nil }
         let prefix = String(data: raw.prefix(3), encoding: .utf8)
@@ -154,7 +153,6 @@ enum ChromiumCrypto {
         return out
     }
 
-    /// Decode Chromium cookie bytes; Claude Desktop often prefixes 32 binary bytes.
     static func cookieUTF8(from decrypted: Data) -> String? {
         if let s = String(data: decrypted, encoding: .utf8), !s.isEmpty { return s }
         if decrypted.count > 32, let s = String(data: decrypted.dropFirst(32), encoding: .utf8), !s.isEmpty {

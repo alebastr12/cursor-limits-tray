@@ -20,21 +20,24 @@ final class StatusItemController: NSObject {
         item.button?.target = self
         item.button?.action = #selector(togglePopover(_:))
         item.button?.imagePosition = .imageLeading
-        item.button?.setAccessibilityTitle("Лимиты Cursor / ChatGPT / Claude")
+        item.button?.setAccessibilityTitle("Лимиты Cursor / ChatGPT")
         statusItem = item
 
         let pop = NSPopover()
         pop.behavior = .transient
         pop.animates = true
-        pop.contentSize = NSSize(width: 360, height: 560)
+        pop.contentSize = NSSize(width: 360, height: 480)
         pop.contentViewController = NSHostingController(rootView: PopoverView(poller: poller))
         popover = pop
 
         poller.$menuBarText
             .combineLatest(poller.$cursorSeverity, poller.$chatGPTSeverity, poller.$claudeSeverity)
+            .combineLatest(poller.$claudeConfigured)
             .receive(on: RunLoop.main)
-            .sink { [weak self] text, cSev, gSev, aSev in
-                self?.applyTitle(text, cursor: cSev, chat: gSev, claude: aSev)
+            .sink { [weak self] sev, configured in
+                let (text, cSev, gSev, aSev) = sev
+                self?.applyTitle(text, cursor: cSev, chat: gSev, claude: aSev, showClaude: configured)
+                self?.popover?.contentSize = NSSize(width: 360, height: configured ? 560 : 480)
             }
             .store(in: &cancellables)
 
@@ -42,12 +45,19 @@ final class StatusItemController: NSObject {
             poller.menuBarText,
             cursor: poller.cursorSeverity,
             chat: poller.chatGPTSeverity,
-            claude: poller.claudeSeverity
+            claude: poller.claudeSeverity,
+            showClaude: poller.claudeConfigured
         )
         poller.start()
     }
 
-    private func applyTitle(_ text: String, cursor: LimitSeverity, chat: LimitSeverity, claude: LimitSeverity) {
+    private func applyTitle(
+        _ text: String,
+        cursor: LimitSeverity,
+        chat: LimitSeverity,
+        claude: LimitSeverity,
+        showClaude: Bool
+    ) {
         guard let button = statusItem?.button else { return }
 
         let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
@@ -58,9 +68,12 @@ final class StatusItemController: NSObject {
 
         colorSegment(in: attr, letter: "C", severity: cursor, font: font)
         colorSegment(in: attr, letter: "G", severity: chat, font: font)
-        colorSegment(in: attr, letter: "A", severity: claude, font: font)
+        if showClaude {
+            colorSegment(in: attr, letter: "A", severity: claude, font: font)
+        }
 
         button.attributedTitle = attr
+        button.setAccessibilityTitle(showClaude ? "Лимиты Cursor / ChatGPT / Claude" : "Лимиты Cursor / ChatGPT")
 
         let image = NSImage(systemSymbolName: "gauge.with.dots.needle.67percent", accessibilityDescription: nil)
         image?.isTemplate = true

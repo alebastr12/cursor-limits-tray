@@ -26,9 +26,22 @@ struct SettingsView: View {
                     title: "Cursor",
                     ok: poller.cursorConnected,
                     detail: poller.cursorConnected
-                        ? "Автоматически с этого Mac"
-                        : "Войдите в приложение Cursor"
+                        ? "Токен в Keychain приложения"
+                        : "Нужен локальный Cursor (один Unlock при необходимости)"
                 )
+
+                if !poller.cursorConnected {
+                    Button("Разрешить доступ к Cursor (1× Keychain)") {
+                        Task {
+                            let ok = await poller.connectCursorFromLocalInteractive()
+                            statusIsError = !ok
+                            statusMessage = ok
+                                ? "Cursor подключён."
+                                : "Не удалось прочитать Cursor Safe Storage. Войдите в приложение Cursor."
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
 
                 connectionRow(
                     title: "ChatGPT",
@@ -44,13 +57,13 @@ struct SettingsView: View {
                             statusMessage = "ChatGPT подключён."
                         }
                     } label: {
-                        Text("Подключить ChatGPT")
+                        Text("Подключить ChatGPT (вход в окне — без Keychain)")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
 
-                    Button("Взять сессию ChatGPT из браузера") {
+                    Button("Взять из браузера (тихо → макс. 1 пароль)") {
                         Task {
                             let ok = await poller.connectChatGPTFromBrowserInteractive()
                             if ok {
@@ -61,7 +74,7 @@ struct SettingsView: View {
                                 statusMessage = "Нужен Полный доступ к диску — или войдите кнопкой выше."
                             } else {
                                 statusIsError = true
-                                statusMessage = "В браузере нет сессии chatgpt.com."
+                                statusMessage = "Нет сессии / Keychain уже использован. Лучше «Подключить ChatGPT»."
                             }
                         }
                     }
@@ -70,36 +83,42 @@ struct SettingsView: View {
 
                 connectionRow(
                     title: "Claude",
-                    ok: poller.claudeConnected,
+                    ok: poller.claudeConfigured && poller.claudeConnected,
                     detail: claudeDetail
                 )
 
-                if !poller.claudeConnected {
+                if !poller.claudeConfigured {
+                    Text("После подключения Claude появится в меню-баре (A…) и в поповере.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if !poller.claudeConfigured || !poller.claudeConnected {
                     Button {
                         ClaudeConnectController.shared.present { header in
                             poller.saveClaudeCookie(header)
                             statusIsError = false
-                            statusMessage = "Claude подключён."
+                            statusMessage = "Claude подключён — смотрите трей."
                         }
                     } label: {
-                        Text("Подключить Claude")
+                        Text("Подключить Claude (вход в окне — без Keychain)")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
 
-                    Button("Взять сессию Claude (Desktop / браузер)") {
+                    Button("Взять из Desktop / браузера (макс. 1 пароль)") {
                         Task {
                             let ok = await poller.connectClaudeFromBrowserInteractive()
                             if ok {
                                 statusIsError = false
-                                statusMessage = "Готово: сессия Claude найдена."
+                                statusMessage = "Готово: Claude найден."
                             } else if poller.claudeNeedsFDA {
                                 statusIsError = true
                                 statusMessage = "Нужен Полный доступ к диску — или войдите кнопкой выше."
                             } else {
                                 statusIsError = true
-                                statusMessage = "Нет sessionKey — откройте Claude Desktop или войдите на claude.ai."
+                                statusMessage = "Нет sessionKey / бюджет Keychain исчерпан. Лучше вход в окне."
                             }
                         }
                     }
@@ -196,13 +215,13 @@ struct SettingsView: View {
     }
 
     private var claudeDetail: String {
-        if poller.claudeConnected {
+        if poller.claudeConfigured {
             if let src = poller.claudeAutoSource {
-                return "Сессия из \(src)"
+                return "В трее · \(src)"
             }
-            return "Подключено"
+            return poller.claudeConnected ? "В трее · подключено" : "В трее · нет связи"
         }
-        return "Claude Desktop или вход на claude.ai"
+        return "Скрыт, пока не подключите"
     }
 
     private func connectionRow(title: String, ok: Bool, detail: String) -> some View {

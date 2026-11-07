@@ -11,8 +11,10 @@ final class UsagePoller: ObservableObject {
     @Published private(set) var cursorConnected = false
     @Published private(set) var chatGPTConnected = false
     @Published private(set) var claudeConnected = false
-    /// Compact menu-bar string, e.g. `C75% · G40% · A60%`.
-    @Published private(set) var menuBarText: String = "C— · G— · A—"
+    /// True after user connected Claude (secrets in app Keychain). Hidden from tray/popover until then.
+    @Published private(set) var claudeConfigured = false
+    /// Compact menu-bar string, e.g. `C75% · G40%` or `C75% · G40% · A60%` once Claude is connected.
+    @Published private(set) var menuBarText: String = "C— · G—"
     @Published private(set) var cursorSeverity: LimitSeverity = .unknown
     @Published private(set) var chatGPTSeverity: LimitSeverity = .unknown
     @Published private(set) var claudeSeverity: LimitSeverity = .unknown
@@ -28,6 +30,7 @@ final class UsagePoller: ObservableObject {
         cursorConnected = true
         chatGPTConnected = true
         claudeConnected = true
+        claudeConfigured = true
         publishMenuBar()
     }
 
@@ -64,13 +67,24 @@ final class UsagePoller: ObservableObject {
             return
         }
         Task {
-            // One-shot silent bootstrap — never again on the 45s timer.
+            // Launch: Cursor from app Keychain / silent Safe Storage only — ZERO SecurityAgent dialogs.
+            // Do NOT auto-import Chrome/Claude cookies (that was the 3-dialog cascade).
             _ = SessionSecrets.cursorAuth()
-            await autoConnectChatGPTIfNeeded()
-            await autoConnectClaudeIfNeeded()
+            // Hydrate from app Keychain only — no Chrome/Claude Safe Storage on launch.
+            chatGPTConnected = SessionSecrets.get(.chatGPTSessionCookie) != nil
+                || SessionSecrets.get(.chatGPTBearerOverride) != nil
+            refreshClaudeConfiguredFlag()
             await refresh()
         }
         restartTimer()
+    }
+
+    private func refreshClaudeConfiguredFlag() {
+        claudeConfigured = SessionSecrets.get(.claudeSessionCookie) != nil
+            || SessionSecrets.get(.claudeBearerOverride) != nil
+        if !claudeConfigured {
+            claudeConnected = false
+        }
     }
 
     func restartTimer() {
@@ -86,50 +100,34 @@ final class UsagePoller: ObservableObject {
         inFlight = Task { await refresh() }
     }
 
+    /// Prefer in-app login; optional silent browser hydrate (no UI). Used by snapshots only.
     @discardableResult
     func autoConnectChatGPTIfNeeded() async -> Bool {
-        if let existing = SessionSecrets.get(.chatGPTSessionCookie), !existing.isEmpty {
+        if SessionSecrets.get(.chatGPTSessionCookie) != nil || SessionSecrets.get(.chatGPTBearerOverride) != nil {
             chatGPTConnected = true
             return true
         }
-        if SessionSecrets.get(.chatGPTBearerOverride) != nil {
-            chatGPTConnected = true
-            return true
-        }
-        // Silent browser scan at most once per process — never on every poll.
-        guard !SessionSecrets.didAttemptChatGPTBrowser else { return false }
-        SessionSecrets.didAttemptChatGPTBrowser = true
-
         switch BrowserCookieReader.findChatGPTSessionCookie(allowKeychainPrompt: false) {
         case .found(let header, let source):
             SessionSecrets.set(header, account: .chatGPTSessionCookie)
             chatGPTAutoSource = source
-            chatGPTNeedsFDA = false
             chatGPTConnected = true
             return true
         case .needsFullDiskAccess:
             chatGPTNeedsFDA = true
             return false
-        case .notFound, .error:
-            chatGPTNeedsFDA = false
+        default:
             return false
         }
     }
 
     @discardableResult
     func autoConnectClaudeIfNeeded() async -> Bool {
-        if let existing = SessionSecrets.get(.claudeSessionCookie), !existing.isEmpty {
+        if SessionSecrets.get(.claudeSessionCookie) != nil || SessionSecrets.get(.claudeBearerOverride) != nil {
             claudeConnected = true
             return true
         }
-        if SessionSecrets.get(.claudeBearerOverride) != nil {
-            claudeConnected = true
-            return true
-        }
-        guard !SessionSecrets.didAttemptClaudeLocal else { return false }
-        SessionSecrets.didAttemptClaudeLocal = true
-
-        if let local = ClaudeLocalAuth.loadIfAvailable(allowKeychainPrompt: false) {
+        if let local = ClaudeLocalAuth.loadSilent() {
             if let cookie = local.sessionCookie {
                 SessionSecrets.set(cookie, account: .claudeSessionCookie)
             }
@@ -137,41 +135,35 @@ final class UsagePoller: ObservableObject {
                 SessionSecrets.set(oauth, account: .claudeBearerOverride)
             }
             claudeAutoSource = local.source
-            claudeNeedsFDA = false
+            claudeConfigured = true
             claudeConnected = true
-            connectionNote = "Claude: \(local.source)"
             return true
         }
         return false
     }
 
+    /// «Взять сессию из браузера» — silent all, then at most ONE Keychain unlock.
     @discardableResult
     func connectChatGPTFromBrowserInteractive() async -> Bool {
-        // Explicit user action — may prompt once per browser Safe Storage (budgeted).
-        SessionSecrets.didAttemptChatGPTBrowser = false
         switch BrowserCookieReader.findChatGPTSessionCookie(allowKeychainPrompt: true) {
         case .found(let header, let source):
             SessionSecrets.set(header, account: .chatGPTSessionCookie)
             chatGPTAutoSource = source
             chatGPTNeedsFDA = false
             chatGPTConnected = true
-            SessionSecrets.didAttemptChatGPTBrowser = true
             refreshNow()
             return true
         case .needsFullDiskAccess:
             chatGPTNeedsFDA = true
-            SessionSecrets.didAttemptChatGPTBrowser = true
             return false
         case .notFound, .error:
-            SessionSecrets.didAttemptChatGPTBrowser = true
             return false
         }
     }
 
     @discardableResult
     func connectClaudeFromBrowserInteractive() async -> Bool {
-        SessionSecrets.didAttemptClaudeLocal = false
-        if let local = ClaudeLocalAuth.loadIfAvailable(allowKeychainPrompt: true) {
+        if let local = ClaudeLocalAuth.loadWithSingleUnlock() {
             if let cookie = local.sessionCookie {
                 SessionSecrets.set(cookie, account: .claudeSessionCookie)
             }
@@ -179,28 +171,26 @@ final class UsagePoller: ObservableObject {
                 SessionSecrets.set(oauth, account: .claudeBearerOverride)
             }
             claudeAutoSource = local.source
+            claudeConfigured = true
             claudeConnected = true
             claudeNeedsFDA = false
-            SessionSecrets.didAttemptClaudeLocal = true
             refreshNow()
             return true
         }
-        switch BrowserCookieReader.findClaudeSessionCookie(allowKeychainPrompt: true) {
-        case .found(let header, let source):
-            SessionSecrets.set(header, account: .claudeSessionCookie)
-            claudeAutoSource = source
-            claudeConnected = true
-            SessionSecrets.didAttemptClaudeLocal = true
+        return false
+    }
+
+    /// Explicit one-shot Cursor Safe Storage unlock (Settings) — uses global budget of 1.
+    @discardableResult
+    func connectCursorFromLocalInteractive() async -> Bool {
+        if let creds = SessionSecrets.ensureCursorCached(allowInteractiveUnlock: true) {
+            cursorConnected = true
+            connectionNote = "Cursor: локальный токен"
+            _ = creds
             refreshNow()
             return true
-        case .needsFullDiskAccess:
-            claudeNeedsFDA = true
-            SessionSecrets.didAttemptClaudeLocal = true
-            return false
-        default:
-            SessionSecrets.didAttemptClaudeLocal = true
-            return false
         }
+        return false
     }
 
     func saveChatGPTCookie(_ header: String) {
@@ -213,6 +203,7 @@ final class UsagePoller: ObservableObject {
 
     func saveClaudeCookie(_ header: String) {
         SessionSecrets.set(header, account: .claudeSessionCookie)
+        claudeConfigured = true
         claudeConnected = true
         claudeNeedsFDA = false
         connectionNote = "Claude подключён"
@@ -223,6 +214,7 @@ final class UsagePoller: ObservableObject {
         SessionSecrets.clearAll()
         chatGPTConnected = false
         claudeConnected = false
+        claudeConfigured = false
         chatGPTAutoSource = nil
         claudeAutoSource = nil
         chatGPTNeedsFDA = false
@@ -268,7 +260,7 @@ final class UsagePoller: ObservableObject {
             next.cursor = ProviderSnapshot(name: "Cursor", status: "Нет связи", rows: next.cursor.rows, fetchedAt: next.cursor.fetchedAt, error: humanize(error))
         }
 
-        // ChatGPT / Claude — use cached cookies only. Do NOT re-scan browsers here.
+        // ChatGPT — cached cookies only. Do NOT re-scan browsers here.
         do {
             next.chatGPT = try await ChatGPTUsageClient.fetch(auth: .init(
                 sessionCookie: SessionSecrets.get(.chatGPTSessionCookie),
@@ -284,36 +276,48 @@ final class UsagePoller: ObservableObject {
             next.chatGPT = ProviderSnapshot(name: "ChatGPT", status: "Не подключено", rows: [], fetchedAt: next.chatGPT.fetchedAt, error: humanizeChatGPT(error))
         }
 
-        do {
-            next.claude = try await ClaudeUsageClient.fetch(auth: .init(
-                sessionCookie: SessionSecrets.get(.claudeSessionCookie),
-                bearerToken: SessionSecrets.get(.claudeBearerOverride)
-            ))
-            claudeConnected = next.claude.error == nil && (next.claude.status.contains("Подключено") || !next.claude.rows.isEmpty)
-            if claudeConnected && next.claude.status.isEmpty {
-                next.claude.status = "Подключено"
+        refreshClaudeConfiguredFlag()
+        if claudeConfigured {
+            do {
+                next.claude = try await ClaudeUsageClient.fetch(auth: .init(
+                    sessionCookie: SessionSecrets.get(.claudeSessionCookie),
+                    bearerToken: SessionSecrets.get(.claudeBearerOverride)
+                ))
+                claudeConnected = next.claude.error == nil && (next.claude.status.contains("Подключено") || !next.claude.rows.isEmpty)
+                if claudeConnected && next.claude.status.isEmpty {
+                    next.claude.status = "Подключено"
+                }
+            } catch {
+                claudeConnected = false
+                next.claude = ProviderSnapshot(name: "Claude", status: "Нет связи", rows: [], fetchedAt: next.claude.fetchedAt, error: humanizeClaude(error))
             }
-        } catch {
+        } else {
             claudeConnected = false
-            next.claude = ProviderSnapshot(name: "Claude", status: "Не подключено", rows: [], fetchedAt: next.claude.fetchedAt, error: humanizeClaude(error))
+            next.claude = ProviderSnapshot(name: "Claude", status: "", rows: [], fetchedAt: nil, error: nil)
         }
 
         snapshot = next
-        lastError = [next.cursor.error, next.chatGPT.error, next.claude.error].compactMap { $0 }.first
+        lastError = [next.cursor.error, next.chatGPT.error, claudeConfigured ? next.claude.error : nil].compactMap { $0 }.first
         publishMenuBar()
     }
 
     private func publishMenuBar() {
         let cLeft = remainingPercent(from: snapshot.cursor)
         let gLeft = remainingPercent(from: snapshot.chatGPT)
-        let aLeft = remainingPercent(from: snapshot.claude)
         cursorSeverity = severity(remaining: cLeft, connected: cursorConnected)
         chatGPTSeverity = severity(remaining: gLeft, connected: chatGPTConnected)
-        claudeSeverity = severity(remaining: aLeft, connected: claudeConnected)
         let c = cLeft.map { String(format: "%.0f%%", $0) } ?? "—"
         let g = gLeft.map { String(format: "%.0f%%", $0) } ?? "—"
-        let a = aLeft.map { String(format: "%.0f%%", $0) } ?? "—"
-        menuBarText = "C\(c) · G\(g) · A\(a)"
+        var parts = ["C\(c)", "G\(g)"]
+        if claudeConfigured {
+            let aLeft = remainingPercent(from: snapshot.claude)
+            claudeSeverity = severity(remaining: aLeft, connected: claudeConnected)
+            let a = aLeft.map { String(format: "%.0f%%", $0) } ?? "—"
+            parts.append("A\(a)")
+        } else {
+            claudeSeverity = .unknown
+        }
+        menuBarText = parts.joined(separator: " · ")
     }
 
     private func remainingPercent(from provider: ProviderSnapshot) -> Double? {

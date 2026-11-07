@@ -14,8 +14,7 @@ struct PopoverView: View {
                     if poller.snapshot.isDemo {
                         banner("Демо-данные. Выключите демо в Настройках для живых лимитов.", color: .orange)
                     }
-                    if (poller.chatGPTNeedsFDA && !poller.chatGPTConnected)
-                        || (poller.claudeNeedsFDA && !poller.claudeConnected) {
+                    if poller.chatGPTNeedsFDA && !poller.chatGPTConnected {
                         fdaBanner
                     }
 
@@ -31,19 +30,20 @@ struct PopoverView: View {
                         onConnect: { openChatGPTConnect() }
                     )
 
-                    ProviderSection(
-                        snapshot: poller.snapshot.claude,
-                        connected: poller.claudeConnected,
-                        connectTitle: poller.claudeConnected ? nil : "Подключить Claude",
-                        onConnect: { openClaudeConnect() }
-                    )
+                    // Claude only after connect (Settings → Подключить Claude) — no empty A— / section.
+                    if poller.claudeConfigured {
+                        ProviderSection(
+                            snapshot: poller.snapshot.claude,
+                            connected: poller.claudeConnected
+                        )
+                    }
                 }
                 .padding(16)
             }
             Divider().opacity(0.35)
             footer
         }
-        .frame(width: 360, height: 560)
+        .frame(width: 360, height: poller.claudeConfigured ? 560 : 480)
         .background(WindowBackground())
         .sheet(isPresented: $showSettings) {
             SettingsView(poller: poller)
@@ -58,12 +58,6 @@ struct PopoverView: View {
         // Detached floating panel — survives MenuBarExtra popover dismiss.
         ChatGPTConnectController.shared.present { [poller] header in
             poller.saveChatGPTCookie(header)
-        }
-    }
-
-    private func openClaudeConnect() {
-        ClaudeConnectController.shared.present { [poller] header in
-            poller.saveClaudeCookie(header)
         }
     }
 
@@ -90,9 +84,10 @@ struct PopoverView: View {
 
     private var subtitle: String {
         let interval = Int(AppPreferences.pollIntervalSeconds)
+        let claudeAt = poller.claudeConfigured ? poller.snapshot.claude.fetchedAt : nil
         if let t = poller.snapshot.cursor.fetchedAt
             ?? poller.snapshot.chatGPT.fetchedAt
-            ?? poller.snapshot.claude.fetchedAt {
+            ?? claudeAt {
             let f = RelativeDateTimeFormatter()
             f.locale = Locale(identifier: "ru_RU")
             f.unitsStyle = .abbreviated
@@ -103,17 +98,13 @@ struct PopoverView: View {
 
     private var fdaBanner: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Чтобы взять сессию из Chrome / Claude Desktop автоматически, разрешите Полный доступ к диску для этого приложения.")
+            Text("Чтобы взять сессию ChatGPT из Chrome автоматически, разрешите Полный доступ к диску. Предпочтительнее «Подключить ChatGPT» без Keychain.")
                 .font(.caption)
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
                 Button("Открыть настройки") { poller.openFullDiskAccessSettings() }
                 if !poller.chatGPTConnected {
                     Button("ChatGPT") { openChatGPTConnect() }
-                        .buttonStyle(.borderedProminent)
-                }
-                if !poller.claudeConnected {
-                    Button("Claude") { openClaudeConnect() }
                         .buttonStyle(.borderedProminent)
                 }
             }

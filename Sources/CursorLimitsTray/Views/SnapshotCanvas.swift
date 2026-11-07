@@ -42,12 +42,14 @@ struct SnapshotCanvas: View {
                     showConnect: showConnectChatGPT && snapshot.chatGPT.rows.isEmpty,
                     connectLabel: "Подключить ChatGPT"
                 )
-                canvasProvider(
-                    snapshot.claude,
-                    connected: !snapshot.claude.rows.isEmpty,
-                    showConnect: showConnectClaude && snapshot.claude.rows.isEmpty,
-                    connectLabel: "Подключить Claude"
-                )
+                if snapshot.isDemo || !snapshot.claude.rows.isEmpty {
+                    canvasProvider(
+                        snapshot.claude,
+                        connected: !snapshot.claude.rows.isEmpty,
+                        showConnect: false,
+                        connectLabel: "Подключить Claude"
+                    )
+                }
             }
             .padding(16)
 

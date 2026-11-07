@@ -9,20 +9,56 @@ enum ClaudeLocalAuth {
         var source: String
     }
 
-    static func loadIfAvailable(allowKeychainPrompt: Bool = false) -> Credentials? {
-        if let desktop = loadClaudeDesktopSession(allowKeychainPrompt: allowKeychainPrompt) {
-            let oauth = loadClaudeCodeOAuth(allowKeychainPrompt: allowKeychainPrompt)
+    /// Silent-only import (launch / poll). Never shows Keychain UI.
+    static func loadSilent() -> Credentials? {
+        if let desktop = loadClaudeDesktopSession(allowKeychainPrompt: false) {
+            let oauth = loadClaudeCodeOAuth(allowKeychainPrompt: false)
             return Credentials(sessionCookie: desktop.cookie, oauthAccessToken: oauth, source: desktop.source)
         }
-        if let oauth = loadClaudeCodeOAuth(allowKeychainPrompt: allowKeychainPrompt) {
+        if let oauth = loadClaudeCodeOAuth(allowKeychainPrompt: false) {
             return Credentials(sessionCookie: nil, oauthAccessToken: oauth, source: "Claude Code")
         }
-        switch BrowserCookieReader.findClaudeSessionCookie(allowKeychainPrompt: allowKeychainPrompt) {
+        switch BrowserCookieReader.findClaudeSessionCookie(allowKeychainPrompt: false) {
         case .found(let header, let source):
             return Credentials(sessionCookie: header, oauthAccessToken: nil, source: source)
         default:
             return nil
         }
+    }
+
+    /// User clicked «Взять сессию»: silent everything first; then unlock **one** preferred store and stop.
+    static func loadWithSingleUnlock() -> Credentials? {
+        if let silent = loadSilent() { return silent }
+
+        // Prefer Claude Desktop Safe Storage (one dialog), not a cascade of browsers.
+        if !ChromiumCrypto.hasUsedGlobalInteractiveUnlock {
+            if let desktop = loadClaudeDesktopSession(allowKeychainPrompt: true) {
+                return Credentials(sessionCookie: desktop.cookie, oauthAccessToken: nil, source: desktop.source)
+            }
+        }
+
+        // If Desktop missing/denied and budget still free, try ONE browser unlock path.
+        if !ChromiumCrypto.hasUsedGlobalInteractiveUnlock {
+            switch BrowserCookieReader.findClaudeSessionCookie(allowKeychainPrompt: true) {
+            case .found(let header, let source):
+                return Credentials(sessionCookie: header, oauthAccessToken: nil, source: source)
+            default:
+                break
+            }
+        }
+
+        // Never also unlock Claude Code in the same action if we already spent the budget.
+        if !ChromiumCrypto.hasUsedGlobalInteractiveUnlock,
+           let oauth = loadClaudeCodeOAuth(allowKeychainPrompt: true) {
+            return Credentials(sessionCookie: nil, oauthAccessToken: oauth, source: "Claude Code")
+        }
+
+        return nil
+    }
+
+    /// Legacy name — maps to silent (callers must not use for cascading prompts).
+    static func loadIfAvailable(allowKeychainPrompt: Bool = false) -> Credentials? {
+        allowKeychainPrompt ? loadWithSingleUnlock() : loadSilent()
     }
 
     private static func loadClaudeDesktopSession(allowKeychainPrompt: Bool) -> (cookie: String, source: String)? {

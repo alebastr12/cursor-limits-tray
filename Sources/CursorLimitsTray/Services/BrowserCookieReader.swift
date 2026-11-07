@@ -9,64 +9,80 @@ enum BrowserCookieReader {
         case error(String)
     }
 
-    /// Clear per-browser Keychain prompt budget (call on «Сбросить секреты» / reconnect).
+    struct BrowserProfile {
+        let name: String
+        let cookiesPath: String
+        let keychainService: String
+        let keychainAccount: String
+    }
+
+    static let chromiumProfiles: [BrowserProfile] = [
+        BrowserProfile(
+            name: "Chrome",
+            cookiesPath: NSHomeDirectory() + "/Library/Application Support/Google/Chrome/Default/Cookies",
+            keychainService: "Chrome Safe Storage",
+            keychainAccount: "Chrome"
+        ),
+        BrowserProfile(
+            name: "Chrome Profile 1",
+            cookiesPath: NSHomeDirectory() + "/Library/Application Support/Google/Chrome/Profile 1/Cookies",
+            keychainService: "Chrome Safe Storage",
+            keychainAccount: "Chrome"
+        ),
+        BrowserProfile(
+            name: "Brave",
+            cookiesPath: NSHomeDirectory() + "/Library/Application Support/BraveSoftware/Brave-Browser/Default/Cookies",
+            keychainService: "Brave Safe Storage",
+            keychainAccount: "Brave"
+        ),
+        BrowserProfile(
+            name: "Arc",
+            cookiesPath: NSHomeDirectory() + "/Library/Application Support/Arc/User Data/Default/Cookies",
+            keychainService: "Arc Safe Storage",
+            keychainAccount: "Arc"
+        ),
+        BrowserProfile(
+            name: "Edge",
+            cookiesPath: NSHomeDirectory() + "/Library/Application Support/Microsoft Edge/Default/Cookies",
+            keychainService: "Microsoft Edge Safe Storage",
+            keychainAccount: "Microsoft Edge"
+        )
+    ]
+
     static func resetPromptBudgetForReconnect() {
         ChromiumCrypto.clearPromptBudget()
     }
 
-    /// Looks for ChatGPT session cookies in Chromium-based browsers.
-    /// - Parameter allowKeychainPrompt: only true for explicit user action («Взять сессию из браузера»).
-    ///   Even then, ChromiumCrypto allows at most one Keychain dialog per Safe Storage service.
+    /// ChatGPT cookies. Interactive: silent scan all → at most ONE Safe Storage unlock → stop.
     static func findChatGPTSessionCookie(allowKeychainPrompt: Bool = false) -> Outcome {
-        let profiles: [(name: String, cookiesPath: String, keychainService: String, keychainAccount: String)] = [
-            (
-                "Chrome",
-                NSHomeDirectory() + "/Library/Application Support/Google/Chrome/Default/Cookies",
-                "Chrome Safe Storage",
-                "Chrome"
-            ),
-            (
-                "Chrome Profile 1",
-                NSHomeDirectory() + "/Library/Application Support/Google/Chrome/Profile 1/Cookies",
-                "Chrome Safe Storage",
-                "Chrome"
-            ),
-            (
-                "Brave",
-                NSHomeDirectory() + "/Library/Application Support/BraveSoftware/Brave-Browser/Default/Cookies",
-                "Brave Safe Storage",
-                "Brave"
-            ),
-            (
-                "Arc",
-                NSHomeDirectory() + "/Library/Application Support/Arc/User Data/Default/Cookies",
-                "Arc Safe Storage",
-                "Arc"
-            ),
-            (
-                "Edge",
-                NSHomeDirectory() + "/Library/Application Support/Microsoft Edge/Default/Cookies",
-                "Microsoft Edge Safe Storage",
-                "Microsoft Edge"
-            )
-        ]
+        findSession(
+            allowKeychainPrompt: allowKeychainPrompt,
+            read: readChromiumChatGPTCookies
+        )
+    }
+
+    /// Claude.ai cookies in Chromium browsers (not Claude Desktop).
+    static func findClaudeSessionCookie(allowKeychainPrompt: Bool = false) -> Outcome {
+        findSession(
+            allowKeychainPrompt: allowKeychainPrompt,
+            read: readClaudeCookies
+        )
+    }
+
+    private static func findSession(
+        allowKeychainPrompt: Bool,
+        read: (String, String, String, Bool) throws -> String?
+    ) -> Outcome {
+        let existing = chromiumProfiles.filter { FileManager.default.fileExists(atPath: $0.cookiesPath) }
+        guard !existing.isEmpty else { return .notFound }
 
         var sawPermissionDenied = false
-        var sawExistingDB = false
 
-        for profile in profiles {
-            let path = profile.cookiesPath
-            guard FileManager.default.fileExists(atPath: path) else { continue }
-            sawExistingDB = true
-
+        // Pass 1: silent only — never shows SecurityAgent.
+        for profile in existing {
             do {
-                let header = try readChromiumChatGPTCookies(
-                    dbPath: path,
-                    keychainService: profile.keychainService,
-                    keychainAccount: profile.keychainAccount,
-                    allowKeychainPrompt: allowKeychainPrompt
-                )
-                if let header, !header.isEmpty {
+                if let header = try read(profile.cookiesPath, profile.keychainService, profile.keychainAccount, false),
+                   !header.isEmpty {
                     return .found(cookieHeader: header, source: profile.name)
                 }
             } catch CookieReadError.permissionDenied {
@@ -76,43 +92,51 @@ enum BrowserCookieReader {
             }
         }
 
+        guard allowKeychainPrompt else {
+            if sawPermissionDenied { return .needsFullDiskAccess }
+            return .notFound
+        }
+
+        // Pass 2: unlock exactly ONE Safe Storage (first profile whose silent key was missing), then stop.
+        if ChromiumCrypto.hasUsedGlobalInteractiveUnlock {
+            if sawPermissionDenied { return .needsFullDiskAccess }
+            return .notFound
+        }
+
+        for profile in existing {
+            // Skip if silent already had the password (would have succeeded in pass 1 if cookies existed).
+            let cacheKey = ChromiumCrypto.cacheKey(service: profile.keychainService, account: profile.keychainAccount)
+            _ = cacheKey
+            do {
+                if let header = try read(profile.cookiesPath, profile.keychainService, profile.keychainAccount, true),
+                   !header.isEmpty {
+                    return .found(cookieHeader: header, source: profile.name)
+                }
+                // Interactive was attempted inside ChromiumCrypto (budget consumed) — do not cascade.
+                if ChromiumCrypto.hasUsedGlobalInteractiveUnlock {
+                    break
+                }
+            } catch CookieReadError.permissionDenied {
+                sawPermissionDenied = true
+                if ChromiumCrypto.hasUsedGlobalInteractiveUnlock { break }
+            } catch CookieReadError.noKey {
+                // Budget may have been spent on a denied/cancel dialog.
+                if ChromiumCrypto.hasUsedGlobalInteractiveUnlock { break }
+                continue
+            } catch {
+                if ChromiumCrypto.hasUsedGlobalInteractiveUnlock { break }
+                continue
+            }
+        }
+
         if sawPermissionDenied { return .needsFullDiskAccess }
-        if sawExistingDB { return .notFound }
         return .notFound
     }
 
-    /// Looks for Claude `sessionKey` in Chromium browsers (claude.ai).
-    static func findClaudeSessionCookie(allowKeychainPrompt: Bool = false) -> Outcome {
-        let profiles: [(name: String, cookiesPath: String, keychainService: String, keychainAccount: String)] = [
-            ("Chrome", NSHomeDirectory() + "/Library/Application Support/Google/Chrome/Default/Cookies", "Chrome Safe Storage", "Chrome"),
-            ("Chrome Profile 1", NSHomeDirectory() + "/Library/Application Support/Google/Chrome/Profile 1/Cookies", "Chrome Safe Storage", "Chrome"),
-            ("Brave", NSHomeDirectory() + "/Library/Application Support/BraveSoftware/Brave-Browser/Default/Cookies", "Brave Safe Storage", "Brave"),
-            ("Arc", NSHomeDirectory() + "/Library/Application Support/Arc/User Data/Default/Cookies", "Arc Safe Storage", "Arc"),
-            ("Edge", NSHomeDirectory() + "/Library/Application Support/Microsoft Edge/Default/Cookies", "Microsoft Edge Safe Storage", "Microsoft Edge")
-        ]
-        var sawPermissionDenied = false
-        var sawExistingDB = false
-        for profile in profiles {
-            guard FileManager.default.fileExists(atPath: profile.cookiesPath) else { continue }
-            sawExistingDB = true
-            do {
-                if let header = try readClaudeCookies(
-                    dbPath: profile.cookiesPath,
-                    keychainService: profile.keychainService,
-                    keychainAccount: profile.keychainAccount,
-                    allowKeychainPrompt: allowKeychainPrompt
-                ) {
-                    return .found(cookieHeader: header, source: profile.name)
-                }
-            } catch CookieReadError.permissionDenied {
-                sawPermissionDenied = true
-            } catch {
-                continue
-            }
-        }
-        if sawPermissionDenied { return .needsFullDiskAccess }
-        if sawExistingDB { return .notFound }
-        return .notFound
+    private enum CookieReadError: Error {
+        case permissionDenied
+        case openFailed
+        case noKey
     }
 
     private static func readClaudeCookies(
@@ -170,12 +194,6 @@ enum BrowserCookieReader {
         return "sessionKey=\(session)"
     }
 
-    private enum CookieReadError: Error {
-        case permissionDenied
-        case openFailed
-        case noKey
-    }
-
     private static func readChromiumChatGPTCookies(
         dbPath: String,
         keychainService: String,
@@ -186,7 +204,6 @@ enum BrowserCookieReader {
             .appendingPathComponent("clt-cookies-\(UUID().uuidString).db")
         do {
             try FileManager.default.copyItem(atPath: dbPath, toPath: tmp.path)
-            // Also copy WAL/SHM if present for consistency
             for suffix in ["-wal", "-shm"] {
                 let side = dbPath + suffix
                 if FileManager.default.fileExists(atPath: side) {
@@ -198,7 +215,6 @@ enum BrowserCookieReader {
             if ns.domain == NSPOSIXErrorDomain && ns.code == 1 {
                 throw CookieReadError.permissionDenied
             }
-            // Fall through: try opening original path
             return try queryCookies(
                 dbPath: dbPath,
                 keychainService: keychainService,
@@ -277,7 +293,6 @@ enum BrowserCookieReader {
 
         guard !parts.isEmpty else { return nil }
 
-        // Prefer sharded pair if present, else single token.
         let byName = Dictionary(uniqueKeysWithValues: parts.map { ($0.name, $0.value) })
         if let z = byName["__Secure-next-auth.session-token.0"],
            let o = byName["__Secure-next-auth.session-token.1"] {
@@ -286,7 +301,6 @@ enum BrowserCookieReader {
         if let single = byName["__Secure-next-auth.session-token"] {
             return "__Secure-next-auth.session-token=\(single)"
         }
-        // Any leftover session-looking cookies
         return parts.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
     }
 }

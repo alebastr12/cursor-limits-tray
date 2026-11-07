@@ -1,8 +1,8 @@
 # Cursor Limits Tray
 
-**RU:** Меню-бар приложение для macOS — живые остатки лимитов **Cursor**, **ChatGPT** и **Claude** прямо у Dynamic Island / в строке меню.
+**RU:** Меню-бар приложение для macOS — живые остатки лимитов **Cursor**, **ChatGPT** и (по желанию) **Claude** у Dynamic Island / в строке меню.
 
-**EN:** A native macOS menu-bar app that shows live remaining **Cursor**, **ChatGPT**, and **Claude** usage limits next to the notch.
+**EN:** A native macOS menu-bar app for live **Cursor** / **ChatGPT** limits (and **Claude** after you connect it).
 
 ![Menu bar](docs/screenshots/tray-menubar-live.png)
 
@@ -10,78 +10,42 @@
 
 Download the latest [**`.dmg`**](https://github.com/alebastr12/cursor-limits-tray/releases/latest) → open → drag **CursorLimitsTray** to **Applications**.
 
-If macOS says the app can’t be opened (unsigned / not notarized): **right-click** the app → **Open** → confirm. Gatekeeper only; this release is **ad-hoc signed**, not Apple-notarized.
-
-Also available: [`.zip` of the `.app`](https://github.com/alebastr12/cursor-limits-tray/releases/latest) if you prefer not to use a disk image.
+If macOS blocks it (unsigned / not notarized): **right-click** → **Open**. Ad-hoc signed only.
 
 ## Features
 
-- Live menu-bar text: `C75% · G40% · A60%` (updates every ~45s; `—` if a provider is not connected)
-- Popover with progress bars and reset times (Russian UI)
-- **Cursor** — usually automatic (reads the local Cursor app session on this Mac)
-- **ChatGPT** — one-tap **Подключить ChatGPT** in a floating login window; optional browser-session pickup
-- **Claude** — auto from Claude Desktop `sessionKey` when available, or **Подключить Claude** login window / browser cookie
-- Secrets only in macOS Keychain (`local.cursor-limits-tray`) — never hardcoded
-- **No Keychain spam on poll:** tokens are cached in memory for the process; Chrome/Cursor/Claude Safe Storage is read at most once (silent), and interactive “Allow” is once per browser until you reconnect
-- **Tray stays running:** closing a window (✕ / ⌘W) only hides it — use **Выйти** in the popover (or ⌘Q) to quit
-
-## Requirements
-
-- macOS 14+
-- Apple Silicon or Intel
-
-## Build from source
-
-```bash
-git clone https://github.com/alebastr12/cursor-limits-tray.git
-cd cursor-limits-tray
-./Scripts/build-app.sh
-open dist/CursorLimitsTray.app
-```
-
-Package distributables:
-
-```bash
-./Scripts/package-dmg.sh 0.2.2      # dist/CursorLimitsTray-0.2.2.dmg
-./Scripts/package-release.sh 0.2.2  # dist/CursorLimitsTray-0.2.2.zip
-```
-
-Optional after install: popover → **Настройки…** → **Открывать при входе**.
+- Menu bar: `C75% · G40%` — **Claude (`A…`) only after** Settings → **Подключить Claude** (no empty `A—`)
+- Prefer **in-app login** for ChatGPT/Claude (no Chrome Keychain)
+- **At most one** foreign Keychain unlock until Reset (not Chrome→Brave→Edge cascade)
+- Cursor token cached in app Keychain after first successful read
+- Closing windows keeps the tray; **Выйти** / ⌘Q quits
 
 ## Usage
 
-1. After launch, the menu bar shows `C…% · G…% · A…%` (or `—` while disconnected).
-2. Click the item for details.
-3. If ChatGPT shows `G—`, click **Подключить ChatGPT** and sign in.
-4. If Claude shows `A—`, open Claude Desktop (often enough) or click **Подключить Claude**.
-5. Cursor usually works if the Cursor desktop app is already signed in.
-6. **Close vs Quit:** ✕ / ⌘W closes windows only (tray keeps polling). **Выйти** in the popover (or ⌘Q) quits.
+1. Launch → tray shows `C… · G…` (Claude hidden until connected).
+2. **Подключить ChatGPT** in the popover (login window — preferred).
+3. **Claude:** Settings → **Подключить Claude** — then `A…` appears in the tray.
+4. **Close vs Quit:** ✕ / ⌘W hides windows; **Выйти** quits.
 
-## Keychain / permissions (what you may see once)
+## Keychain — what the old “3 passwords” were
 
-| Prompt | When | How often |
-|--------|------|-----------|
-| **Cursor Safe Storage** / Chrome / Claude Safe Storage | First silent auto-import, or when you click «Взять сессию…» | At most **once per browser/app** until «Сбросить секреты» / reconnect. Choose **Always Allow** if offered. |
-| **Full Disk Access** | Cookie DB can’t be read (banner in the popover) | Once — open System Settings from the banner |
-| Login windows (ChatGPT / Claude) | You click **Подключить…** | Only when you ask |
+On older builds, launch/connect unlocked **Cursor Safe Storage + Chrome Safe Storage + Claude Safe Storage** in a row.
 
-Background polling every ~45s does **not** re-read Safe Storage or show SecurityAgent dialogs.
+**Now (0.2.3+):**
+| Action | Dialogs |
+|--------|---------|
+| Launch / poll | **Zero** SecurityAgent prompts |
+| Подключить ChatGPT / Claude (login window) | **Zero** Keychain (cookies from WKWebView) |
+| «Взять из браузера» / «Разрешить Cursor» | Silent first; then **at most one** unlock app-wide until Reset |
 
-## Privacy
+Remaining single prompt (optional): only if you choose browser/Desktop import or Cursor unlock and Safe Storage isn’t already Always Allow’d.
 
-- No telemetry from this app.
-- Tokens/cookies stay in the local Keychain (+ in-memory cache while running).
-- Undocumented vendor endpoints (Cursor / ChatGPT / Claude web) may change.
-- Free Claude accounts often return empty usage percentages; Pro/Max show windows.
-
-## Dev
+## Build / package
 
 ```bash
-swift build -c release --product CursorLimitsTray
-./Scripts/run.sh
-open dist/CursorLimitsTray.app --args --demo
-open dist/CursorLimitsTray.app --args --connect-chatgpt
-open dist/CursorLimitsTray.app --args --connect-claude
+./Scripts/build-app.sh
+./Scripts/package-dmg.sh 0.2.3
+./Scripts/package-release.sh 0.2.3
 ```
 
 ## License
