@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var showManual = false
     @State private var manualChatCookie = ""
     @State private var manualCursorCookie = ""
+    @State private var manualClaudeCookie = ""
     @State private var statusMessage: String?
     @State private var statusIsError = false
 
@@ -20,7 +21,6 @@ struct SettingsView: View {
             Text("Настройки")
                 .font(.title2.weight(.semibold))
 
-            // Connection status — primary surface
             VStack(alignment: .leading, spacing: 12) {
                 connectionRow(
                     title: "Cursor",
@@ -50,27 +50,65 @@ struct SettingsView: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
 
-                    Button("Взять сессию из браузера") {
+                    Button("Взять сессию ChatGPT из браузера") {
                         Task {
                             let ok = await poller.connectChatGPTFromBrowserInteractive()
                             if ok {
                                 statusIsError = false
-                                statusMessage = "Готово: сессия найдена в браузере."
+                                statusMessage = "Готово: сессия ChatGPT найдена в браузере."
                             } else if poller.chatGPTNeedsFDA {
                                 statusIsError = true
                                 statusMessage = "Нужен Полный доступ к диску — или войдите кнопкой выше."
                             } else {
                                 statusIsError = true
-                                statusMessage = "В браузере нет сессии chatgpt.com. Войдите на сайте или нажмите «Подключить ChatGPT»."
+                                statusMessage = "В браузере нет сессии chatgpt.com."
                             }
                         }
                     }
                     .frame(maxWidth: .infinity)
+                }
 
-                    if poller.chatGPTNeedsFDA {
-                        Button("Открыть «Полный доступ к диску»") {
-                            poller.openFullDiskAccessSettings()
+                connectionRow(
+                    title: "Claude",
+                    ok: poller.claudeConnected,
+                    detail: claudeDetail
+                )
+
+                if !poller.claudeConnected {
+                    Button {
+                        ClaudeConnectController.shared.present { header in
+                            poller.saveClaudeCookie(header)
+                            statusIsError = false
+                            statusMessage = "Claude подключён."
                         }
+                    } label: {
+                        Text("Подключить Claude")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+
+                    Button("Взять сессию Claude (Desktop / браузер)") {
+                        Task {
+                            let ok = await poller.connectClaudeFromBrowserInteractive()
+                            if ok {
+                                statusIsError = false
+                                statusMessage = "Готово: сессия Claude найдена."
+                            } else if poller.claudeNeedsFDA {
+                                statusIsError = true
+                                statusMessage = "Нужен Полный доступ к диску — или войдите кнопкой выше."
+                            } else {
+                                statusIsError = true
+                                statusMessage = "Нет sessionKey — откройте Claude Desktop или войдите на claude.ai."
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+
+                if poller.chatGPTNeedsFDA || poller.claudeNeedsFDA {
+                    Button("Открыть «Полный доступ к диску»") {
+                        poller.openFullDiskAccessSettings()
                     }
                 }
             }
@@ -103,7 +141,13 @@ struct SettingsView: View {
                         .font(.caption)
                     TextEditor(text: $manualChatCookie)
                         .font(.system(.caption, design: .monospaced))
-                        .frame(minHeight: 56)
+                        .frame(minHeight: 48)
+
+                    Text("Claude cookie `sessionKey=…`")
+                        .font(.caption)
+                    TextEditor(text: $manualClaudeCookie)
+                        .font(.system(.caption, design: .monospaced))
+                        .frame(minHeight: 48)
                 }
             }
             .formStyle(.grouped)
@@ -119,6 +163,7 @@ struct SettingsView: View {
                 Button("Сбросить секреты") {
                     manualChatCookie = ""
                     manualCursorCookie = ""
+                    manualClaudeCookie = ""
                     poller.clearStoredSecrets()
                     statusIsError = false
                     statusMessage = "Секреты очищены. Cursor может остаться на авто-входе."
@@ -130,12 +175,16 @@ struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 480, height: 560)
+        .frame(width: 480, height: 640)
         .onAppear {
             openAtLogin = SMAppService.mainApp.status == .enabled
             manualChatCookie = KeychainStore.load(.chatGPTSessionCookie) ?? ""
             manualCursorCookie = KeychainStore.load(.cursorSessionCookie) ?? ""
-            Task { _ = await poller.autoConnectChatGPTIfNeeded() }
+            manualClaudeCookie = KeychainStore.load(.claudeSessionCookie) ?? ""
+            Task {
+                _ = await poller.autoConnectChatGPTIfNeeded()
+                _ = await poller.autoConnectClaudeIfNeeded()
+            }
         }
     }
 
@@ -147,6 +196,16 @@ struct SettingsView: View {
             return "Подключено"
         }
         return "Один вход в окне приложения"
+    }
+
+    private var claudeDetail: String {
+        if poller.claudeConnected {
+            if let src = poller.claudeAutoSource {
+                return "Сессия из \(src)"
+            }
+            return "Подключено"
+        }
+        return "Claude Desktop или вход на claude.ai"
     }
 
     private func connectionRow(title: String, ok: Bool, detail: String) -> some View {
@@ -179,9 +238,11 @@ struct SettingsView: View {
 
             let g = manualChatCookie.trimmingCharacters(in: .whitespacesAndNewlines)
             if g.isEmpty { KeychainStore.delete(.chatGPTSessionCookie) }
-            else {
-                try KeychainStore.save(g, account: .chatGPTSessionCookie)
-            }
+            else { try KeychainStore.save(g, account: .chatGPTSessionCookie) }
+
+            let a = manualClaudeCookie.trimmingCharacters(in: .whitespacesAndNewlines)
+            if a.isEmpty { KeychainStore.delete(.claudeSessionCookie) }
+            else { try KeychainStore.save(a, account: .claudeSessionCookie) }
         } catch {
             statusIsError = true
             statusMessage = "Не сохранилось: \(error.localizedDescription)"

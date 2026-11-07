@@ -4,29 +4,39 @@ import SwiftUI
 @MainActor
 enum SnapshotExporter {
     static func writeDemoMain(to path: String) {
-        write(view: SnapshotCanvas(snapshot: .demo, showConnectChatGPT: false), size: NSSize(width: 360, height: 480), to: path)
+        write(
+            view: SnapshotCanvas(snapshot: .demo, showConnectChatGPT: false, showConnectClaude: false),
+            size: NSSize(width: 360, height: 560),
+            to: path
+        )
     }
 
     static func writeLiveMain(to path: String) async {
         let poller = UsagePoller()
         _ = await poller.autoConnectChatGPTIfNeeded()
+        _ = await poller.autoConnectClaudeIfNeeded()
         await poller.refresh()
         var snap = poller.snapshot
-        let showConnect = snap.chatGPT.rows.isEmpty
-        if snap.cursor.rows.isEmpty && snap.chatGPT.rows.isEmpty {
+        let showConnectG = snap.chatGPT.rows.isEmpty
+        let showConnectA = snap.claude.rows.isEmpty
+        if snap.cursor.rows.isEmpty && snap.chatGPT.rows.isEmpty && snap.claude.rows.isEmpty {
             snap = .demo
         }
         write(
-            view: SnapshotCanvas(snapshot: snap, showConnectChatGPT: showConnect),
-            size: NSSize(width: 360, height: 480),
+            view: SnapshotCanvas(
+                snapshot: snap,
+                showConnectChatGPT: showConnectG,
+                showConnectClaude: showConnectA
+            ),
+            size: NSSize(width: 360, height: 560),
             to: path
         )
     }
 
-    static func writeSettings(to path: String, cursorOK: Bool, chatOK: Bool) {
+    static func writeSettings(to path: String, cursorOK: Bool, chatOK: Bool, claudeOK: Bool = false) {
         write(
-            view: SettingsSnapshotCanvas(cursorOK: cursorOK, chatOK: chatOK),
-            size: NSSize(width: 480, height: 420),
+            view: SettingsSnapshotCanvas(cursorOK: cursorOK, chatOK: chatOK, claudeOK: claudeOK),
+            size: NSSize(width: 480, height: 480),
             to: path
         )
     }

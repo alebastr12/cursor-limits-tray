@@ -9,6 +9,8 @@ enum KeychainStore {
         case cursorBearerOverride = "cursor.bearerOverride"
         case chatGPTSessionCookie = "chatgpt.sessionCookie"
         case chatGPTBearerOverride = "chatgpt.bearerOverride"
+        case claudeSessionCookie = "claude.sessionCookie"
+        case claudeBearerOverride = "claude.bearerOverride"
     }
 
     static func save(_ value: String, account: Account) throws {

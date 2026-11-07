@@ -82,4 +82,17 @@ enum ChromiumCrypto {
         out.count = num
         return out
     }
+
+    /// Decode Chromium cookie bytes; Claude Desktop often prefixes 32 binary bytes.
+    static func cookieUTF8(from decrypted: Data) -> String? {
+        if let s = String(data: decrypted, encoding: .utf8), !s.isEmpty { return s }
+        if decrypted.count > 32, let s = String(data: decrypted.dropFirst(32), encoding: .utf8), !s.isEmpty {
+            return s
+        }
+        if let range = decrypted.range(of: Data("sk-ant".utf8)) {
+            return String(data: decrypted[range.lowerBound...], encoding: .utf8)
+        }
+        return nil
+    }
 }
+

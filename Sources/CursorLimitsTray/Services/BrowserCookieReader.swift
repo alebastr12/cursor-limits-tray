@@ -75,6 +75,95 @@ enum BrowserCookieReader {
         return .notFound
     }
 
+    /// Looks for Claude `sessionKey` in Chromium browsers (claude.ai).
+    static func findClaudeSessionCookie(allowKeychainPrompt: Bool = false) -> Outcome {
+        let profiles: [(name: String, cookiesPath: String, keychainService: String, keychainAccount: String)] = [
+            ("Chrome", NSHomeDirectory() + "/Library/Application Support/Google/Chrome/Default/Cookies", "Chrome Safe Storage", "Chrome"),
+            ("Chrome Profile 1", NSHomeDirectory() + "/Library/Application Support/Google/Chrome/Profile 1/Cookies", "Chrome Safe Storage", "Chrome"),
+            ("Brave", NSHomeDirectory() + "/Library/Application Support/BraveSoftware/Brave-Browser/Default/Cookies", "Brave Safe Storage", "Brave"),
+            ("Arc", NSHomeDirectory() + "/Library/Application Support/Arc/User Data/Default/Cookies", "Arc Safe Storage", "Arc"),
+            ("Edge", NSHomeDirectory() + "/Library/Application Support/Microsoft Edge/Default/Cookies", "Microsoft Edge Safe Storage", "Microsoft Edge")
+        ]
+        var sawPermissionDenied = false
+        var sawExistingDB = false
+        for profile in profiles {
+            guard FileManager.default.fileExists(atPath: profile.cookiesPath) else { continue }
+            sawExistingDB = true
+            do {
+                if let header = try readClaudeCookies(
+                    dbPath: profile.cookiesPath,
+                    keychainService: profile.keychainService,
+                    keychainAccount: profile.keychainAccount,
+                    allowKeychainPrompt: allowKeychainPrompt
+                ) {
+                    return .found(cookieHeader: header, source: profile.name)
+                }
+            } catch CookieReadError.permissionDenied {
+                sawPermissionDenied = true
+            } catch {
+                continue
+            }
+        }
+        if sawPermissionDenied { return .needsFullDiskAccess }
+        if sawExistingDB { return .notFound }
+        return .notFound
+    }
+
+    private static func readClaudeCookies(
+        dbPath: String,
+        keychainService: String,
+        keychainAccount: String,
+        allowKeychainPrompt: Bool
+    ) throws -> String? {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("clt-claude-br-\(UUID().uuidString).db")
+        do {
+            try FileManager.default.copyItem(atPath: dbPath, toPath: tmp.path)
+        } catch {
+            let ns = error as NSError
+            if ns.domain == NSPOSIXErrorDomain && ns.code == 1 { throw CookieReadError.permissionDenied }
+            return try queryClaudeCookies(dbPath: dbPath, keychainService: keychainService, keychainAccount: keychainAccount, allowKeychainPrompt: allowKeychainPrompt)
+        }
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        return try queryClaudeCookies(dbPath: tmp.path, keychainService: keychainService, keychainAccount: keychainAccount, allowKeychainPrompt: allowKeychainPrompt)
+    }
+
+    private static func queryClaudeCookies(
+        dbPath: String,
+        keychainService: String,
+        keychainAccount: String,
+        allowKeychainPrompt: Bool
+    ) throws -> String? {
+        guard let password = ChromiumCrypto.keychainPassword(service: keychainService, account: keychainAccount, allowPrompt: allowKeychainPrompt) else {
+            throw CookieReadError.noKey
+        }
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK, let db else {
+            throw CookieReadError.openFailed
+        }
+        defer { sqlite3_close(db) }
+        let sql = "SELECT name, encrypted_value, value FROM cookies WHERE host_key LIKE '%claude.ai%' AND name IN ('sessionKey','sessionKeyV3');"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        var session: String?
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let name = String(cString: sqlite3_column_text(stmt, 0))
+            var value = ""
+            if let plain = sqlite3_column_text(stmt, 2) { value = String(cString: plain) }
+            if value.isEmpty, let blob = sqlite3_column_blob(stmt, 1) {
+                let data = Data(bytes: blob, count: Int(sqlite3_column_bytes(stmt, 1)))
+                if let dec = ChromiumCrypto.decryptV10(data, password: password) {
+                    value = ChromiumCrypto.cookieUTF8(from: dec) ?? ""
+                }
+            }
+            if value.hasPrefix("sk-ant"), name == "sessionKey" || session == nil {
+                session = value
+            }
+        }
+        guard let session else { return nil }
+        return "sessionKey=\(session)"
+    }
+
     private enum CookieReadError: Error {
         case permissionDenied
         case openFailed
@@ -170,9 +259,8 @@ enum BrowserCookieReader {
                 if let blob = sqlite3_column_blob(stmt, 1) {
                     let size = Int(sqlite3_column_bytes(stmt, 1))
                     let data = Data(bytes: blob, count: size)
-                    if let dec = ChromiumCrypto.decryptV10(data, password: password),
-                       let s = String(data: dec, encoding: .utf8) {
-                        value = s
+                    if let dec = ChromiumCrypto.decryptV10(data, password: password) {
+                        value = ChromiumCrypto.cookieUTF8(from: dec) ?? ""
                     }
                 }
             }

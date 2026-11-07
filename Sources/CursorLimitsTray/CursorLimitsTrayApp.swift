@@ -64,11 +64,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let settingsPath {
                     let p = UsagePoller()
                     _ = await p.autoConnectChatGPTIfNeeded()
+                    _ = await p.autoConnectClaudeIfNeeded()
                     await p.refresh()
                     SnapshotExporter.writeSettings(
                         to: settingsPath,
                         cursorOK: p.cursorConnected || !(p.snapshot.cursor.rows.isEmpty),
-                        chatOK: p.chatGPTConnected || !(p.snapshot.chatGPT.rows.isEmpty)
+                        chatOK: p.chatGPTConnected || !(p.snapshot.chatGPT.rows.isEmpty),
+                        claudeOK: p.claudeConnected || !(p.snapshot.claude.rows.isEmpty)
                     )
                 }
                 NSApp.terminate(nil)
@@ -88,6 +90,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSApp.activate(ignoringOtherApps: true)
                 ChatGPTConnectController.shared.present { header in
                     self.poller.saveChatGPTCookie(header)
+                }
+            }
+        }
+
+        if args.contains("--connect-claude") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                NSApp.setActivationPolicy(.regular)
+                NSApp.activate(ignoringOtherApps: true)
+                ClaudeConnectController.shared.present { header in
+                    self.poller.saveClaudeCookie(header)
                 }
             }
         }

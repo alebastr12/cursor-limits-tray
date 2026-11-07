@@ -4,6 +4,7 @@ import SwiftUI
 struct SnapshotCanvas: View {
     let snapshot: UsageSnapshot
     var showConnectChatGPT: Bool = false
+    var showConnectClaude: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -38,7 +39,14 @@ struct SnapshotCanvas: View {
                 canvasProvider(
                     snapshot.chatGPT,
                     connected: !snapshot.chatGPT.rows.isEmpty,
-                    showConnect: showConnectChatGPT && snapshot.chatGPT.rows.isEmpty
+                    showConnect: showConnectChatGPT && snapshot.chatGPT.rows.isEmpty,
+                    connectLabel: "Подключить ChatGPT"
+                )
+                canvasProvider(
+                    snapshot.claude,
+                    connected: !snapshot.claude.rows.isEmpty,
+                    showConnect: showConnectClaude && snapshot.claude.rows.isEmpty,
+                    connectLabel: "Подключить Claude"
                 )
             }
             .padding(16)
@@ -55,7 +63,7 @@ struct SnapshotCanvas: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
         }
-        .frame(width: 360, height: 480)
+        .frame(width: 360, height: 560)
         .background(
             LinearGradient(
                 colors: [
@@ -68,7 +76,12 @@ struct SnapshotCanvas: View {
         )
     }
 
-    private func canvasProvider(_ snap: ProviderSnapshot, connected: Bool, showConnect: Bool = false) -> some View {
+    private func canvasProvider(
+        _ snap: ProviderSnapshot,
+        connected: Bool,
+        showConnect: Bool = false,
+        connectLabel: String = "Подключить"
+    ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(snap.name)
@@ -82,7 +95,7 @@ struct SnapshotCanvas: View {
                 }
             }
             if showConnect {
-                Text("Подключить ChatGPT")
+                Text(connectLabel)
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -117,6 +130,7 @@ struct SnapshotCanvas: View {
 struct SettingsSnapshotCanvas: View {
     var cursorOK: Bool
     var chatOK: Bool
+    var claudeOK: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -126,6 +140,7 @@ struct SettingsSnapshotCanvas: View {
             VStack(alignment: .leading, spacing: 12) {
                 statusLine("Cursor", ok: cursorOK, detail: cursorOK ? "Автоматически с этого Mac" : "Войдите в Cursor")
                 statusLine("ChatGPT", ok: chatOK, detail: chatOK ? "Подключено" : "Один вход в окне приложения")
+                statusLine("Claude", ok: claudeOK, detail: claudeOK ? "Подключено" : "Claude Desktop или вход на claude.ai")
                 if !chatOK {
                     Text("Подключить ChatGPT")
                         .font(.body.weight(.semibold))
@@ -133,20 +148,20 @@ struct SettingsSnapshotCanvas: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                         .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 8))
-                    Text("Взять сессию из браузера")
+                }
+                if !claudeOK {
+                    Text("Подключить Claude")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+                        .padding(.vertical, 10)
+                        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 8))
                 }
             }
             .padding(14)
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
 
             Text("Опрос · 45 с · Открывать при входе")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Text("Вручную (если авто не сработало) ▸")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -159,7 +174,7 @@ struct SettingsSnapshotCanvas: View {
             }
         }
         .padding(20)
-        .frame(width: 480, height: 420)
+        .frame(width: 480, height: 480)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
@@ -171,7 +186,9 @@ struct SettingsSnapshotCanvas: View {
                 Text(detail).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Text(ok ? "OK" : "…").font(.caption.weight(.semibold)).foregroundStyle(ok ? .green : .secondary)
+            Text(ok ? "OK" : "…")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(ok ? .green : .secondary)
         }
     }
 }

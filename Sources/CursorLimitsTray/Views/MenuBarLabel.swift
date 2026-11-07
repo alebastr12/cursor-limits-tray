@@ -5,7 +5,6 @@ struct MenuBarLabel: View {
     @ObservedObject var poller: UsagePoller
 
     var body: some View {
-        // Text-forward near the island; tiny gauge only as a cue.
         HStack(spacing: 3) {
             Image(systemName: "gauge.with.dots.needle.67percent")
                 .font(.system(size: 11, weight: .semibold))
@@ -22,6 +21,12 @@ struct MenuBarLabel: View {
                     .foregroundStyle(poller.chatGPTSeverity.color)
                 Text(chatValue)
                     .foregroundStyle(poller.chatGPTSeverity.color)
+                Text(" · ")
+                    .foregroundStyle(.secondary)
+                Text("A")
+                    .foregroundStyle(poller.claudeSeverity.color)
+                Text(claudeValue)
+                    .foregroundStyle(poller.claudeSeverity.color)
             }
             .font(.system(size: 11, weight: .semibold, design: .monospaced))
         }
@@ -36,8 +41,12 @@ struct MenuBarLabel: View {
         token(after: "G", in: poller.menuBarText)
     }
 
+    private var claudeValue: String {
+        token(after: "A", in: poller.menuBarText)
+    }
+
     private func token(after letter: Character, in text: String) -> String {
-        // menuBarText format: `C75% · G40%` or `C— · G—`
+        // menuBarText format: `C75% · G40% · A60%` or `C— · G— · A—`
         guard let idx = text.firstIndex(of: letter) else { return "—" }
         let rest = text[text.index(after: idx)...]
         let end = rest.firstIndex(of: " ") ?? rest.endIndex
@@ -47,7 +56,11 @@ struct MenuBarLabel: View {
     private var overallColor: Color {
         let ranks: [LimitSeverity] = [.critical, .low, .ok, .unknown]
         for s in ranks {
-            if poller.cursorSeverity == s || poller.chatGPTSeverity == s { return s.color }
+            if poller.cursorSeverity == s
+                || poller.chatGPTSeverity == s
+                || poller.claudeSeverity == s {
+                return s.color
+            }
         }
         return .secondary
     }

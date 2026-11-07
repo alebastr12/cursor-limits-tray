@@ -20,29 +20,34 @@ final class StatusItemController: NSObject {
         item.button?.target = self
         item.button?.action = #selector(togglePopover(_:))
         item.button?.imagePosition = .imageLeading
-        item.button?.setAccessibilityTitle("Лимиты Cursor / ChatGPT")
+        item.button?.setAccessibilityTitle("Лимиты Cursor / ChatGPT / Claude")
         statusItem = item
 
         let pop = NSPopover()
         pop.behavior = .transient
         pop.animates = true
-        pop.contentSize = NSSize(width: 360, height: 480)
+        pop.contentSize = NSSize(width: 360, height: 560)
         pop.contentViewController = NSHostingController(rootView: PopoverView(poller: poller))
         popover = pop
 
         poller.$menuBarText
-            .combineLatest(poller.$cursorSeverity, poller.$chatGPTSeverity)
+            .combineLatest(poller.$cursorSeverity, poller.$chatGPTSeverity, poller.$claudeSeverity)
             .receive(on: RunLoop.main)
-            .sink { [weak self] text, cSev, gSev in
-                self?.applyTitle(text, cursor: cSev, chat: gSev)
+            .sink { [weak self] text, cSev, gSev, aSev in
+                self?.applyTitle(text, cursor: cSev, chat: gSev, claude: aSev)
             }
             .store(in: &cancellables)
 
-        applyTitle(poller.menuBarText, cursor: poller.cursorSeverity, chat: poller.chatGPTSeverity)
+        applyTitle(
+            poller.menuBarText,
+            cursor: poller.cursorSeverity,
+            chat: poller.chatGPTSeverity,
+            claude: poller.claudeSeverity
+        )
         poller.start()
     }
 
-    private func applyTitle(_ text: String, cursor: LimitSeverity, chat: LimitSeverity) {
+    private func applyTitle(_ text: String, cursor: LimitSeverity, chat: LimitSeverity, claude: LimitSeverity) {
         guard let button = statusItem?.button else { return }
 
         let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
@@ -51,13 +56,12 @@ final class StatusItemController: NSObject {
             .foregroundColor: NSColor.labelColor
         ])
 
-        // Color `C…` and `G…` segments: format is `C75% · G40%` / `C— · G—`
         colorSegment(in: attr, letter: "C", severity: cursor, font: font)
         colorSegment(in: attr, letter: "G", severity: chat, font: font)
+        colorSegment(in: attr, letter: "A", severity: claude, font: font)
 
         button.attributedTitle = attr
 
-        // Tiny gauge; template so macOS can adapt to dark menu bar.
         let image = NSImage(systemSymbolName: "gauge.with.dots.needle.67percent", accessibilityDescription: nil)
         image?.isTemplate = true
         button.image = image
@@ -72,21 +76,6 @@ final class StatusItemController: NSObject {
     ) {
         let s = attr.string as NSString
         let full = s as String
-        guard let startSwift = full.firstIndex(of: letter) else { return }
-        let start = full.distance(from: full.startIndex, to: startSwift)
-        // Segment runs until space or end (covers `C75%` or `C—`)
-        var end = start + 1
-        while end < s.length {
-            let ch = s.character(at: end)
-            if ch == 32 || ch == 0x00B7 { break } // space or ·
-            // also stop before " ·" — middle dot may be separate
-            end += 1
-        }
-        // Include trailing chars until separator ` · `
-        if let range = Range(NSRange(location: start, length: end - start), in: full) {
-            _ = range
-        }
-        // Prefer matching regex-like: letter + value
         let pattern = "\(letter)[^ ·]+"
         if let regex = try? NSRegularExpression(pattern: pattern),
            let match = regex.firstMatch(in: full, range: NSRange(location: 0, length: s.length)) {
