@@ -9,8 +9,14 @@ enum BrowserCookieReader {
         case error(String)
     }
 
+    /// Clear per-browser Keychain prompt budget (call on «Сбросить секреты» / reconnect).
+    static func resetPromptBudgetForReconnect() {
+        ChromiumCrypto.clearPromptBudget()
+    }
+
     /// Looks for ChatGPT session cookies in Chromium-based browsers.
     /// - Parameter allowKeychainPrompt: only true for explicit user action («Взять сессию из браузера»).
+    ///   Even then, ChromiumCrypto allows at most one Keychain dialog per Safe Storage service.
     static func findChatGPTSessionCookie(allowKeychainPrompt: Bool = false) -> Outcome {
         let profiles: [(name: String, cookiesPath: String, keychainService: String, keychainAccount: String)] = [
             (

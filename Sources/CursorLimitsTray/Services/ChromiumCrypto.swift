@@ -4,27 +4,98 @@ import Security
 import LocalAuthentication
 
 enum ChromiumCrypto {
-    /// - Parameter allowPrompt: if false, never show Keychain UI (silent fail).
+    private static var passwordCache: [String: String] = [:]
+    /// Services we already showed a Keychain dialog for this process (Allow or Deny).
+    private static var promptedThisProcess: Set<String> = []
+    /// Persisted: interactive prompt already used for this Safe Storage service (until reconnect).
+    private static let promptedDefaultsPrefix = "safeStorage.prompted."
+
+    static func cacheKey(service: String, account: String) -> String {
+        "\(service)|\(account)"
+    }
+
+    static func clearSessionCaches() {
+        passwordCache.removeAll()
+        promptedThisProcess.removeAll()
+    }
+
+    static func clearPromptBudget() {
+        promptedThisProcess.removeAll()
+        let defaults = UserDefaults.standard
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(promptedDefaultsPrefix) {
+            defaults.removeObject(forKey: key)
+        }
+    }
+
+    private static func hasUsedPromptBudget(service: String) -> Bool {
+        if promptedThisProcess.contains(service) { return true }
+        return UserDefaults.standard.bool(forKey: promptedDefaultsPrefix + service)
+    }
+
+    private static func markPromptUsed(service: String) {
+        promptedThisProcess.insert(service)
+        UserDefaults.standard.set(true, forKey: promptedDefaultsPrefix + service)
+    }
+
+    /// Read Chromium / Electron Safe Storage password.
+    /// - Silent (`allowPrompt: false`): never shows UI; uses memory cache; `kSecUseAuthenticationUIFail`.
+    /// - Interactive: at most one prompt per Safe Storage service until reconnect clears budget.
     static func keychainPassword(service: String, account: String = "Chrome", allowPrompt: Bool = false) -> String? {
-        // Chrome uses account "Chrome", Brave "Brave", etc. Cursor uses "Cursor Key".
-        var query: [String: Any] = [
+        let key = cacheKey(service: service, account: account)
+        if let cached = passwordCache[key] { return cached }
+
+        if allowPrompt {
+            // Already prompted for this browser Safe Storage (Allow Always or Deny) — don't spam.
+            if hasUsedPromptBudget(service: service) {
+                return keychainPasswordSilent(service: service, account: account, cacheKey: key)
+            }
+            markPromptUsed(service: service)
+            if let pwd = keychainPasswordInteractive(service: service, account: account) {
+                passwordCache[key] = pwd
+                return pwd
+            }
+            return nil
+        }
+
+        return keychainPasswordSilent(service: service, account: account, cacheKey: key)
+    }
+
+    private static func keychainPasswordSilent(service: String, account: String, cacheKey: String) -> String? {
+        var query: [String: Any] = baseQuery(service: service, account: account)
+        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        let ctx = LAContext()
+        ctx.interactionNotAllowed = true
+        query[kSecUseAuthenticationContext as String] = ctx
+
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        guard status == errSecSuccess, let data = item as? Data,
+              let pwd = String(data: data, encoding: .utf8), !pwd.isEmpty else {
+            return nil
+        }
+        passwordCache[cacheKey] = pwd
+        return pwd
+    }
+
+    private static func keychainPasswordInteractive(service: String, account: String) -> String? {
+        let query = baseQuery(service: service, account: account)
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        guard status == errSecSuccess, let data = item as? Data,
+              let pwd = String(data: data, encoding: .utf8), !pwd.isEmpty else {
+            return nil
+        }
+        return pwd
+    }
+
+    private static func baseQuery(service: String, account: String) -> [String: Any] {
+        [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
-        // Avoid modal Keychain dialogs stealing focus from the login panel.
-        if !allowPrompt {
-            // Prefer LAContext.interactionNotAllowed when available.
-            let ctx = LAContext()
-            ctx.interactionNotAllowed = true
-            query[kSecUseAuthenticationContext as String] = ctx
-        }
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess, let data = item as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
     }
 
     static func pbkdf2(password: String, salt: Data = Data("saltysalt".utf8), keyByteCount: Int = 16, rounds: UInt32 = 1003) -> Data? {
@@ -95,4 +166,3 @@ enum ChromiumCrypto {
         return nil
     }
 }
-

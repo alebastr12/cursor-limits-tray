@@ -1,6 +1,4 @@
 import Foundation
-import Security
-import LocalAuthentication
 import SQLite3
 
 /// Reads Claude Desktop `sessionKey` and optional Claude Code OAuth token.
@@ -19,7 +17,6 @@ enum ClaudeLocalAuth {
         if let oauth = loadClaudeCodeOAuth(allowKeychainPrompt: allowKeychainPrompt) {
             return Credentials(sessionCookie: nil, oauthAccessToken: oauth, source: "Claude Code")
         }
-        // Browser cookies for claude.ai
         switch BrowserCookieReader.findClaudeSessionCookie(allowKeychainPrompt: allowKeychainPrompt) {
         case .found(let header, let source):
             return Credentials(sessionCookie: header, oauthAccessToken: nil, source: source)
@@ -31,7 +28,7 @@ enum ClaudeLocalAuth {
     private static func loadClaudeDesktopSession(allowKeychainPrompt: Bool) -> (cookie: String, source: String)? {
         let dbPath = NSHomeDirectory() + "/Library/Application Support/Claude/Cookies"
         guard FileManager.default.fileExists(atPath: dbPath) else { return nil }
-        guard let password = keychainPassword(
+        guard let password = ChromiumCrypto.keychainPassword(
             service: "Claude Safe Storage",
             account: "Claude Key",
             allowPrompt: allowKeychainPrompt
@@ -41,8 +38,6 @@ enum ClaudeLocalAuth {
         do {
             try FileManager.default.copyItem(atPath: dbPath, toPath: tmp.path)
         } catch {
-            let ns = error as NSError
-            if ns.domain == NSPOSIXErrorDomain && ns.code == 1 { return nil }
             return nil
         }
         defer { try? FileManager.default.removeItem(at: tmp) }
@@ -79,13 +74,12 @@ enum ClaudeLocalAuth {
     }
 
     private static func loadClaudeCodeOAuth(allowKeychainPrompt: Bool) -> String? {
-        guard let raw = keychainPassword(
+        let account = NSUserName()
+        guard let raw = ChromiumCrypto.keychainPassword(
             service: "Claude Code-credentials",
-            account: NSUserName(),
+            account: account,
             allowPrompt: allowKeychainPrompt
-        ) ?? keychainPassword(service: "Claude Code-credentials", account: "alebastr", allowPrompt: allowKeychainPrompt) else {
-            return nil
-        }
+        ) else { return nil }
         guard let data = raw.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         if let oauth = obj["claudeAiOauth"] as? [String: Any],
@@ -97,36 +91,15 @@ enum ClaudeLocalAuth {
 
     private static func decryptChromiumCookie(_ raw: Data, password: String) -> String? {
         guard let plain = ChromiumCrypto.decryptV10(raw, password: password) else { return nil }
-        // Claude Desktop often stores a 32-byte binary prefix before the UTF-8 cookie.
         if plain.count > 32, let s = String(data: plain.dropFirst(32), encoding: .utf8), s.hasPrefix("sk-ant") {
             return s
         }
         if let s = String(data: plain, encoding: .utf8), s.hasPrefix("sk-ant") {
             return s
         }
-        // Search for sk-ant inside decrypted bytes
         if let range = plain.range(of: Data("sk-ant".utf8)) {
             return String(data: plain[range.lowerBound...], encoding: .utf8)
         }
         return nil
-    }
-
-    private static func keychainPassword(service: String, account: String, allowPrompt: Bool) -> String? {
-        var query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        if !allowPrompt {
-            let ctx = LAContext()
-            ctx.interactionNotAllowed = true
-            query[kSecUseAuthenticationContext as String] = ctx
-        }
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess, let data = item as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
     }
 }

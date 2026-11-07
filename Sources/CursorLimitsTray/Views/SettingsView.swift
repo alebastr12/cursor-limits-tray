@@ -178,13 +178,10 @@ struct SettingsView: View {
         .frame(width: 480, height: 640)
         .onAppear {
             openAtLogin = SMAppService.mainApp.status == .enabled
-            manualChatCookie = KeychainStore.load(.chatGPTSessionCookie) ?? ""
-            manualCursorCookie = KeychainStore.load(.cursorSessionCookie) ?? ""
-            manualClaudeCookie = KeychainStore.load(.claudeSessionCookie) ?? ""
-            Task {
-                _ = await poller.autoConnectChatGPTIfNeeded()
-                _ = await poller.autoConnectClaudeIfNeeded()
-            }
+            manualChatCookie = SessionSecrets.get(.chatGPTSessionCookie) ?? ""
+            manualCursorCookie = SessionSecrets.get(.cursorSessionCookie) ?? ""
+            manualClaudeCookie = SessionSecrets.get(.claudeSessionCookie) ?? ""
+            // Do not re-scan browsers / Safe Storage just because Settings opened.
         }
     }
 
@@ -231,23 +228,17 @@ struct SettingsView: View {
         AppPreferences.pollIntervalSeconds = pollSeconds
         AppPreferences.forceDemoMode = demoMode
 
-        do {
-            let c = manualCursorCookie.trimmingCharacters(in: .whitespacesAndNewlines)
-            if c.isEmpty { KeychainStore.delete(.cursorSessionCookie) }
-            else { try KeychainStore.save(c, account: .cursorSessionCookie) }
+        let c = manualCursorCookie.trimmingCharacters(in: .whitespacesAndNewlines)
+        if c.isEmpty { SessionSecrets.clear(.cursorSessionCookie) }
+        else { SessionSecrets.set(c, account: .cursorSessionCookie) }
 
-            let g = manualChatCookie.trimmingCharacters(in: .whitespacesAndNewlines)
-            if g.isEmpty { KeychainStore.delete(.chatGPTSessionCookie) }
-            else { try KeychainStore.save(g, account: .chatGPTSessionCookie) }
+        let g = manualChatCookie.trimmingCharacters(in: .whitespacesAndNewlines)
+        if g.isEmpty { SessionSecrets.clear(.chatGPTSessionCookie) }
+        else { SessionSecrets.set(g, account: .chatGPTSessionCookie) }
 
-            let a = manualClaudeCookie.trimmingCharacters(in: .whitespacesAndNewlines)
-            if a.isEmpty { KeychainStore.delete(.claudeSessionCookie) }
-            else { try KeychainStore.save(a, account: .claudeSessionCookie) }
-        } catch {
-            statusIsError = true
-            statusMessage = "Не сохранилось: \(error.localizedDescription)"
-            return
-        }
+        let a = manualClaudeCookie.trimmingCharacters(in: .whitespacesAndNewlines)
+        if a.isEmpty { SessionSecrets.clear(.claudeSessionCookie) }
+        else { SessionSecrets.set(a, account: .claudeSessionCookie) }
 
         do {
             if openAtLogin { try SMAppService.mainApp.register() }

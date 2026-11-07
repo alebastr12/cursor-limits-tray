@@ -1,7 +1,5 @@
 import Foundation
 import CommonCrypto
-import Security
-import LocalAuthentication
 import SQLite3
 
 /// Reads Cursor's locally stored access token (encrypted in state.vscdb via Keychain "Cursor Safe Storage").
@@ -13,8 +11,14 @@ enum CursorLocalAuth {
         let membershipType: String?
     }
 
-    static func loadIfAvailable() -> Credentials? {
-        guard let password = keychainPassword(service: "Cursor Safe Storage", account: "Cursor Key") else {
+    /// Prefer `allowKeychainPrompt: false` — poll path must stay silent.
+    /// Interactive prompt is only for an explicit reconnect (and ChromiumCrypto budgets it to once).
+    static func loadIfAvailable(allowKeychainPrompt: Bool = false) -> Credentials? {
+        guard let password = ChromiumCrypto.keychainPassword(
+            service: "Cursor Safe Storage",
+            account: "Cursor Key",
+            allowPrompt: allowKeychainPrompt
+        ) else {
             return nil
         }
         let dbPath = NSHomeDirectory() + "/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
@@ -60,23 +64,6 @@ enum CursorLocalAuth {
         return nil
     }
 
-    private static func keychainPassword(service: String, account: String) -> String? {
-        let ctx = LAContext()
-        ctx.interactionNotAllowed = true
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecUseAuthenticationContext as String: ctx
-        ]
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess, let data = item as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
-
     /// Format: `cursor-safe-storage:v1:<base64(v10||ciphertext)>` — Chromium-style AES-128-CBC.
     private static func decryptCursorSafeStorage(_ value: String, password: String) -> String? {
         let parts = value.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false).map(String.init)
@@ -89,10 +76,8 @@ enum CursorLocalAuth {
         guard prefix == "v10" else { return nil }
         let encrypted = raw.dropFirst(3)
 
-        guard let key = pbkdf2(password: password, salt: Data("saltysalt".utf8), keyByteCount: 16, rounds: 1003) else {
-            return nil
-        }
-        let iv = Data(repeating: 0x20, count: 16) // 16 spaces
+        guard let key = ChromiumCrypto.pbkdf2(password: password) else { return nil }
+        let iv = Data(repeating: 0x20, count: 16)
         var out = Data(count: encrypted.count)
         var num = 0
         let status = out.withUnsafeMutableBytes { outBytes in
@@ -116,28 +101,5 @@ enum CursorLocalAuth {
         guard status == kCCSuccess else { return nil }
         out.count = num
         return String(data: out, encoding: .utf8)
-    }
-
-    private static func pbkdf2(password: String, salt: Data, keyByteCount: Int, rounds: UInt32) -> Data? {
-        let passwordData = Data(password.utf8)
-        var derived = Data(count: keyByteCount)
-        let result = derived.withUnsafeMutableBytes { derivedBytes in
-            salt.withUnsafeBytes { saltBytes in
-                passwordData.withUnsafeBytes { passwordBytes in
-                    CCKeyDerivationPBKDF(
-                        CCPBKDFAlgorithm(kCCPBKDF2),
-                        passwordBytes.bindMemory(to: Int8.self).baseAddress,
-                        passwordData.count,
-                        saltBytes.bindMemory(to: UInt8.self).baseAddress,
-                        salt.count,
-                        CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA1),
-                        rounds,
-                        derivedBytes.bindMemory(to: UInt8.self).baseAddress,
-                        keyByteCount
-                    )
-                }
-            }
-        }
-        return result == kCCSuccess ? derived : nil
     }
 }

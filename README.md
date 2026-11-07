@@ -22,6 +22,7 @@ Also available: [`.zip` of the `.app`](https://github.com/alebastr12/cursor-limi
 - **ChatGPT** — one-tap **Подключить ChatGPT** in a floating login window; optional browser-session pickup
 - **Claude** — auto from Claude Desktop `sessionKey` when available, or **Подключить Claude** login window / browser cookie
 - Secrets only in macOS Keychain (`local.cursor-limits-tray`) — never hardcoded
+- **No Keychain spam on poll:** tokens are cached in memory for the process; Chrome/Cursor/Claude Safe Storage is read at most once (silent), and interactive “Allow” is once per browser until you reconnect
 
 ## Requirements
 
@@ -54,10 +55,20 @@ Optional after install: popover → **Настройки…** → **Открыв
 4. If Claude shows `A—`, open Claude Desktop (often enough) or click **Подключить Claude**.
 5. Cursor usually works if the Cursor desktop app is already signed in.
 
+## Keychain / permissions (what you may see once)
+
+| Prompt | When | How often |
+|--------|------|-----------|
+| **Cursor Safe Storage** / Chrome / Claude Safe Storage | First silent auto-import, or when you click «Взять сессию…» | At most **once per browser/app** until «Сбросить секреты» / reconnect. Choose **Always Allow** if offered. |
+| **Full Disk Access** | Cookie DB can’t be read (banner in the popover) | Once — open System Settings from the banner |
+| Login windows (ChatGPT / Claude) | You click **Подключить…** | Only when you ask |
+
+Background polling every ~45s does **not** re-read Safe Storage or show SecurityAgent dialogs.
+
 ## Privacy
 
 - No telemetry from this app.
-- Tokens/cookies stay in the local Keychain.
+- Tokens/cookies stay in the local Keychain (+ in-memory cache while running).
 - Undocumented vendor endpoints (Cursor / ChatGPT / Claude web) may change.
 - Free Claude accounts often return empty usage percentages; Pro/Max show windows.
 

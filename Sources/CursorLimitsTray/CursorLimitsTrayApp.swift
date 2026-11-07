@@ -63,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 if let settingsPath {
                     let p = UsagePoller()
+                    _ = SessionSecrets.cursorAuth()
                     _ = await p.autoConnectChatGPTIfNeeded()
                     _ = await p.autoConnectClaudeIfNeeded()
                     await p.refresh()

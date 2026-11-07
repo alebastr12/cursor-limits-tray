@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import LocalAuthentication
 
 enum KeychainStore {
     private static let service = "local.cursor-limits-tray"
@@ -23,21 +24,26 @@ enum KeychainStore {
         SecItemDelete(query as CFDictionary)
         var attrs = query
         attrs[kSecValueData as String] = data
-        attrs[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        // After first unlock — no ACL prompt on every SecItemCopyMatching.
+        attrs[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         let status = SecItemAdd(attrs as CFDictionary, nil)
         guard status == errSecSuccess else {
             throw KeychainError.unhandled(status)
         }
     }
 
-    static func load(_ account: Account) -> String? {
-        let query: [String: Any] = [
+    /// - Parameter allowPrompt: app-owned items should never need UI; keep fail-closed by default.
+    static func load(_ account: Account, allowPrompt: Bool = false) -> String? {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account.rawValue,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
+        if !allowPrompt {
+            applySilentAuth(&query)
+        }
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         guard status == errSecSuccess, let data = item as? Data else { return nil }
@@ -51,6 +57,13 @@ enum KeychainStore {
             kSecAttrAccount as String: account.rawValue
         ]
         SecItemDelete(query as CFDictionary)
+    }
+
+    private static func applySilentAuth(_ query: inout [String: Any]) {
+        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        let ctx = LAContext()
+        ctx.interactionNotAllowed = true
+        query[kSecUseAuthenticationContext as String] = ctx
     }
 
     enum KeychainError: LocalizedError {

@@ -13,6 +13,7 @@ enum SnapshotExporter {
 
     static func writeLiveMain(to path: String) async {
         let poller = UsagePoller()
+        _ = SessionSecrets.cursorAuth()
         _ = await poller.autoConnectChatGPTIfNeeded()
         _ = await poller.autoConnectClaudeIfNeeded()
         await poller.refresh()

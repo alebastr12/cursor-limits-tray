@@ -64,6 +64,8 @@ final class UsagePoller: ObservableObject {
             return
         }
         Task {
+            // One-shot silent bootstrap — never again on the 45s timer.
+            _ = SessionSecrets.cursorAuth()
             await autoConnectChatGPTIfNeeded()
             await autoConnectClaudeIfNeeded()
             await refresh()
@@ -86,17 +88,21 @@ final class UsagePoller: ObservableObject {
 
     @discardableResult
     func autoConnectChatGPTIfNeeded() async -> Bool {
-        if let existing = KeychainStore.load(.chatGPTSessionCookie), !existing.isEmpty {
+        if let existing = SessionSecrets.get(.chatGPTSessionCookie), !existing.isEmpty {
             chatGPTConnected = true
             return true
         }
-        if KeychainStore.load(.chatGPTBearerOverride) != nil {
+        if SessionSecrets.get(.chatGPTBearerOverride) != nil {
             chatGPTConnected = true
             return true
         }
+        // Silent browser scan at most once per process — never on every poll.
+        guard !SessionSecrets.didAttemptChatGPTBrowser else { return false }
+        SessionSecrets.didAttemptChatGPTBrowser = true
+
         switch BrowserCookieReader.findChatGPTSessionCookie(allowKeychainPrompt: false) {
         case .found(let header, let source):
-            try? KeychainStore.save(header, account: .chatGPTSessionCookie)
+            SessionSecrets.set(header, account: .chatGPTSessionCookie)
             chatGPTAutoSource = source
             chatGPTNeedsFDA = false
             chatGPTConnected = true
@@ -112,20 +118,23 @@ final class UsagePoller: ObservableObject {
 
     @discardableResult
     func autoConnectClaudeIfNeeded() async -> Bool {
-        if let existing = KeychainStore.load(.claudeSessionCookie), !existing.isEmpty {
+        if let existing = SessionSecrets.get(.claudeSessionCookie), !existing.isEmpty {
             claudeConnected = true
             return true
         }
-        if KeychainStore.load(.claudeBearerOverride) != nil {
+        if SessionSecrets.get(.claudeBearerOverride) != nil {
             claudeConnected = true
             return true
         }
+        guard !SessionSecrets.didAttemptClaudeLocal else { return false }
+        SessionSecrets.didAttemptClaudeLocal = true
+
         if let local = ClaudeLocalAuth.loadIfAvailable(allowKeychainPrompt: false) {
             if let cookie = local.sessionCookie {
-                try? KeychainStore.save(cookie, account: .claudeSessionCookie)
+                SessionSecrets.set(cookie, account: .claudeSessionCookie)
             }
             if let oauth = local.oauthAccessToken {
-                try? KeychainStore.save(oauth, account: .claudeBearerOverride)
+                SessionSecrets.set(oauth, account: .claudeBearerOverride)
             }
             claudeAutoSource = local.source
             claudeNeedsFDA = false
@@ -138,54 +147,64 @@ final class UsagePoller: ObservableObject {
 
     @discardableResult
     func connectChatGPTFromBrowserInteractive() async -> Bool {
+        // Explicit user action — may prompt once per browser Safe Storage (budgeted).
+        SessionSecrets.didAttemptChatGPTBrowser = false
         switch BrowserCookieReader.findChatGPTSessionCookie(allowKeychainPrompt: true) {
         case .found(let header, let source):
-            try? KeychainStore.save(header, account: .chatGPTSessionCookie)
+            SessionSecrets.set(header, account: .chatGPTSessionCookie)
             chatGPTAutoSource = source
             chatGPTNeedsFDA = false
             chatGPTConnected = true
+            SessionSecrets.didAttemptChatGPTBrowser = true
             refreshNow()
             return true
         case .needsFullDiskAccess:
             chatGPTNeedsFDA = true
+            SessionSecrets.didAttemptChatGPTBrowser = true
             return false
         case .notFound, .error:
+            SessionSecrets.didAttemptChatGPTBrowser = true
             return false
         }
     }
 
     @discardableResult
     func connectClaudeFromBrowserInteractive() async -> Bool {
+        SessionSecrets.didAttemptClaudeLocal = false
         if let local = ClaudeLocalAuth.loadIfAvailable(allowKeychainPrompt: true) {
             if let cookie = local.sessionCookie {
-                try? KeychainStore.save(cookie, account: .claudeSessionCookie)
+                SessionSecrets.set(cookie, account: .claudeSessionCookie)
             }
             if let oauth = local.oauthAccessToken {
-                try? KeychainStore.save(oauth, account: .claudeBearerOverride)
+                SessionSecrets.set(oauth, account: .claudeBearerOverride)
             }
             claudeAutoSource = local.source
             claudeConnected = true
             claudeNeedsFDA = false
+            SessionSecrets.didAttemptClaudeLocal = true
             refreshNow()
             return true
         }
         switch BrowserCookieReader.findClaudeSessionCookie(allowKeychainPrompt: true) {
         case .found(let header, let source):
-            try? KeychainStore.save(header, account: .claudeSessionCookie)
+            SessionSecrets.set(header, account: .claudeSessionCookie)
             claudeAutoSource = source
             claudeConnected = true
+            SessionSecrets.didAttemptClaudeLocal = true
             refreshNow()
             return true
         case .needsFullDiskAccess:
             claudeNeedsFDA = true
+            SessionSecrets.didAttemptClaudeLocal = true
             return false
         default:
+            SessionSecrets.didAttemptClaudeLocal = true
             return false
         }
     }
 
     func saveChatGPTCookie(_ header: String) {
-        try? KeychainStore.save(header, account: .chatGPTSessionCookie)
+        SessionSecrets.set(header, account: .chatGPTSessionCookie)
         chatGPTConnected = true
         chatGPTNeedsFDA = false
         connectionNote = "ChatGPT подключён"
@@ -193,7 +212,7 @@ final class UsagePoller: ObservableObject {
     }
 
     func saveClaudeCookie(_ header: String) {
-        try? KeychainStore.save(header, account: .claudeSessionCookie)
+        SessionSecrets.set(header, account: .claudeSessionCookie)
         claudeConnected = true
         claudeNeedsFDA = false
         connectionNote = "Claude подключён"
@@ -201,12 +220,7 @@ final class UsagePoller: ObservableObject {
     }
 
     func clearStoredSecrets() {
-        KeychainStore.delete(.cursorSessionCookie)
-        KeychainStore.delete(.cursorBearerOverride)
-        KeychainStore.delete(.chatGPTSessionCookie)
-        KeychainStore.delete(.chatGPTBearerOverride)
-        KeychainStore.delete(.claudeSessionCookie)
-        KeychainStore.delete(.claudeBearerOverride)
+        SessionSecrets.clearAll()
         chatGPTConnected = false
         claudeConnected = false
         chatGPTAutoSource = nil
@@ -242,7 +256,7 @@ final class UsagePoller: ObservableObject {
         var next = snapshot
         next.isDemo = false
 
-        // Cursor
+        // Cursor — memory / app Keychain only on poll (Safe Storage already done in start()).
         do {
             next.cursor = try await CursorUsageClient.fetch(auth: resolveCursorAuth())
             cursorConnected = next.cursor.error == nil && (!next.cursor.rows.isEmpty || next.cursor.status.contains("Подключено"))
@@ -254,14 +268,11 @@ final class UsagePoller: ObservableObject {
             next.cursor = ProviderSnapshot(name: "Cursor", status: "Нет связи", rows: next.cursor.rows, fetchedAt: next.cursor.fetchedAt, error: humanize(error))
         }
 
-        if !chatGPTConnected { _ = await autoConnectChatGPTIfNeeded() }
-        if !claudeConnected { _ = await autoConnectClaudeIfNeeded() }
-
-        // ChatGPT
+        // ChatGPT / Claude — use cached cookies only. Do NOT re-scan browsers here.
         do {
             next.chatGPT = try await ChatGPTUsageClient.fetch(auth: .init(
-                sessionCookie: KeychainStore.load(.chatGPTSessionCookie),
-                bearerToken: KeychainStore.load(.chatGPTBearerOverride)
+                sessionCookie: SessionSecrets.get(.chatGPTSessionCookie),
+                bearerToken: SessionSecrets.get(.chatGPTBearerOverride)
             ))
             chatGPTConnected = next.chatGPT.error == nil && !next.chatGPT.rows.isEmpty
             if chatGPTConnected {
@@ -273,17 +284,13 @@ final class UsagePoller: ObservableObject {
             next.chatGPT = ProviderSnapshot(name: "ChatGPT", status: "Не подключено", rows: [], fetchedAt: next.chatGPT.fetchedAt, error: humanizeChatGPT(error))
         }
 
-        // Claude
         do {
             next.claude = try await ClaudeUsageClient.fetch(auth: .init(
-                sessionCookie: KeychainStore.load(.claudeSessionCookie),
-                bearerToken: KeychainStore.load(.claudeBearerOverride)
+                sessionCookie: SessionSecrets.get(.claudeSessionCookie),
+                bearerToken: SessionSecrets.get(.claudeBearerOverride)
             ))
-            // Connected even when Free returns empty percentages (rows may describe that).
             claudeConnected = next.claude.error == nil && (next.claude.status.contains("Подключено") || !next.claude.rows.isEmpty)
-            if claudeConnected && !next.claude.status.contains("Подключено") && !next.claude.status.isEmpty {
-                // keep plan label from client
-            } else if claudeConnected && next.claude.status.isEmpty {
+            if claudeConnected && next.claude.status.isEmpty {
                 next.claude.status = "Подключено"
             }
         } catch {
@@ -324,13 +331,14 @@ final class UsagePoller: ObservableObject {
     }
 
     private func resolveCursorAuth() -> CursorUsageClient.Auth {
-        if let override = KeychainStore.load(.cursorBearerOverride), !override.isEmpty {
+        if let override = SessionSecrets.get(.cursorBearerOverride), !override.isEmpty {
             return CursorUsageClient.Auth(bearerToken: override, sessionCookie: nil, userId: nil)
         }
-        if let cookie = KeychainStore.load(.cursorSessionCookie), !cookie.isEmpty {
+        if let cookie = SessionSecrets.get(.cursorSessionCookie), !cookie.isEmpty {
             return CursorUsageClient.Auth(bearerToken: nil, sessionCookie: cookie, userId: nil)
         }
-        if let local = CursorLocalAuth.loadIfAvailable() {
+        // One silent attempt (cached inside SessionSecrets).
+        if let local = SessionSecrets.cursorAuth() {
             return CursorUsageClient.Auth(bearerToken: local.accessToken, sessionCookie: nil, userId: local.userId)
         }
         return CursorUsageClient.Auth(bearerToken: nil, sessionCookie: nil, userId: nil)
