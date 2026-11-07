@@ -67,8 +67,7 @@ final class UsagePoller: ObservableObject {
             return
         }
         Task {
-            // Launch: Cursor from app Keychain / silent Safe Storage only — ZERO SecurityAgent dialogs.
-            // Do NOT auto-import Chrome/Claude cookies (that was the 3-dialog cascade).
+            // Launch: app Keychain / memory ONLY — zero foreign Safe Storage (zero SecurityAgent).
             _ = SessionSecrets.cursorAuth()
             refreshConfiguredFlags()
             await refresh()
@@ -105,41 +104,19 @@ final class UsagePoller: ObservableObject {
         inFlight = Task { await refresh() }
     }
 
-    /// Prefer in-app login; optional silent browser hydrate (no UI). Used by snapshots only.
+    /// Snapshot/helper: app secrets only — never browser Safe Storage.
     @discardableResult
     func autoConnectChatGPTIfNeeded() async -> Bool {
         if SessionSecrets.get(.chatGPTSessionCookie) != nil || SessionSecrets.get(.chatGPTBearerOverride) != nil {
             chatGPTConnected = true
             return true
         }
-        switch BrowserCookieReader.findChatGPTSessionCookie(allowKeychainPrompt: false) {
-        case .found(let header, let source):
-            SessionSecrets.set(header, account: .chatGPTSessionCookie)
-            chatGPTAutoSource = source
-            chatGPTConnected = true
-            return true
-        case .needsFullDiskAccess:
-            chatGPTNeedsFDA = true
-            return false
-        default:
-            return false
-        }
+        return false
     }
 
     @discardableResult
     func autoConnectClaudeIfNeeded() async -> Bool {
         if SessionSecrets.get(.claudeSessionCookie) != nil || SessionSecrets.get(.claudeBearerOverride) != nil {
-            claudeConnected = true
-            return true
-        }
-        if let local = ClaudeLocalAuth.loadSilent() {
-            if let cookie = local.sessionCookie {
-                SessionSecrets.set(cookie, account: .claudeSessionCookie)
-            }
-            if let oauth = local.oauthAccessToken {
-                SessionSecrets.set(oauth, account: .claudeBearerOverride)
-            }
-            claudeAutoSource = local.source
             claudeConfigured = true
             claudeConnected = true
             return true
@@ -185,10 +162,10 @@ final class UsagePoller: ObservableObject {
         return false
     }
 
-    /// Explicit one-shot Cursor Safe Storage unlock (Settings) — uses global budget of 1.
+    /// Advanced only — may prompt Keychain.
     @discardableResult
     func connectCursorFromLocalInteractive() async -> Bool {
-        if let creds = SessionSecrets.ensureCursorCached(allowInteractiveUnlock: true) {
+        if let creds = SessionSecrets.importCursorFromSafeStorageInteractive() {
             cursorConnected = true
             connectionNote = "Cursor: локальный токен"
             _ = creds
@@ -358,13 +335,13 @@ final class UsagePoller: ObservableObject {
     }
 
     private func resolveCursorAuth() -> CursorUsageClient.Auth {
+        // Poll: never re-enter Cursor Safe Storage — cached app secrets only.
         if let override = SessionSecrets.get(.cursorBearerOverride), !override.isEmpty {
             return CursorUsageClient.Auth(bearerToken: override, sessionCookie: nil, userId: nil)
         }
         if let cookie = SessionSecrets.get(.cursorSessionCookie), !cookie.isEmpty {
             return CursorUsageClient.Auth(bearerToken: nil, sessionCookie: cookie, userId: nil)
         }
-        // One silent attempt (cached inside SessionSecrets).
         if let local = SessionSecrets.cursorAuth() {
             return CursorUsageClient.Auth(bearerToken: local.accessToken, sessionCookie: nil, userId: local.userId)
         }

@@ -9,7 +9,7 @@ struct SettingsView: View {
     @State private var pollSeconds: Double = AppPreferences.pollIntervalSeconds
     @State private var demoMode: Bool = AppPreferences.forceDemoMode
     @State private var openAtLogin: Bool = false
-    @State private var showManual = false
+    @State private var showAdvanced = false
     @State private var manualChatCookie = ""
     @State private var manualCursorCookie = ""
     @State private var manualClaudeCookie = ""
@@ -21,27 +21,18 @@ struct SettingsView: View {
             Text("Настройки")
                 .font(.title2.weight(.semibold))
 
+            Text("Обычный путь — без паролей Keychain / SecurityAgent. Подключение через окно входа.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             VStack(alignment: .leading, spacing: 12) {
                 connectionRow(
                     title: "Cursor",
                     ok: poller.cursorConnected,
                     detail: poller.cursorConnected
                         ? "Токен в Keychain приложения"
-                        : "Нужен локальный Cursor (один Unlock при необходимости)"
+                        : "Нужен токен (см. Advanced) или войдите в Cursor на этом Mac и вставьте cookie"
                 )
-
-                if !poller.cursorConnected {
-                    Button("Разрешить доступ к Cursor (1× Keychain)") {
-                        Task {
-                            let ok = await poller.connectCursorFromLocalInteractive()
-                            statusIsError = !ok
-                            statusMessage = ok
-                                ? "Cursor подключён."
-                                : "Не удалось прочитать Cursor Safe Storage. Войдите в приложение Cursor."
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                }
 
                 connectionRow(
                     title: "ChatGPT",
@@ -54,31 +45,14 @@ struct SettingsView: View {
                         ChatGPTConnectController.shared.present { header in
                             poller.saveChatGPTCookie(header)
                             statusIsError = false
-                            statusMessage = "ChatGPT подключён."
+                            statusMessage = "ChatGPT подключён (без Keychain)."
                         }
                     } label: {
-                        Text("Подключить ChatGPT (вход в окне — без Keychain)")
+                        Text("Подключить ChatGPT")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-
-                    Button("Взять из браузера (тихо → макс. 1 пароль)") {
-                        Task {
-                            let ok = await poller.connectChatGPTFromBrowserInteractive()
-                            if ok {
-                                statusIsError = false
-                                statusMessage = "Готово: сессия ChatGPT найдена в браузере."
-                            } else if poller.chatGPTNeedsFDA {
-                                statusIsError = true
-                                statusMessage = "Нужен Полный доступ к диску — или войдите кнопкой выше."
-                            } else {
-                                statusIsError = true
-                                statusMessage = "Нет сессии / Keychain уже использован. Лучше «Подключить ChatGPT»."
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
                 }
 
                 connectionRow(
@@ -87,47 +61,19 @@ struct SettingsView: View {
                     detail: claudeDetail
                 )
 
-                Text("В трее и поповере — только подключённые сервисы с живым %. Подключение только здесь.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
                 if !poller.claudeConfigured || !poller.claudeConnected {
                     Button {
                         ClaudeConnectController.shared.present { header in
                             poller.saveClaudeCookie(header)
                             statusIsError = false
-                            statusMessage = "Claude подключён — смотрите трей."
+                            statusMessage = "Claude подключён (без Keychain)."
                         }
                     } label: {
-                        Text("Подключить Claude (вход в окне — без Keychain)")
+                        Text("Подключить Claude")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-
-                    Button("Взять из Desktop / браузера (макс. 1 пароль)") {
-                        Task {
-                            let ok = await poller.connectClaudeFromBrowserInteractive()
-                            if ok {
-                                statusIsError = false
-                                statusMessage = "Готово: Claude найден."
-                            } else if poller.claudeNeedsFDA {
-                                statusIsError = true
-                                statusMessage = "Нужен Полный доступ к диску — или войдите кнопкой выше."
-                            } else {
-                                statusIsError = true
-                                statusMessage = "Нет sessionKey / бюджет Keychain исчерпан. Лучше вход в окне."
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-
-                if (poller.chatGPTNeedsFDA && !poller.chatGPTConnected)
-                    || (poller.claudeNeedsFDA && !poller.claudeConfigured) {
-                    Button("Открыть «Полный доступ к диску»") {
-                        poller.openFullDiskAccessSettings()
-                    }
                 }
             }
             .padding(14)
@@ -146,26 +92,71 @@ struct SettingsView: View {
                     Toggle("Открывать при входе", isOn: $openAtLogin)
                 }
 
-                DisclosureGroup("Вручную (если авто не сработало)", isExpanded: $showManual) {
-                    Text("Обычному пользователю это не нужно.")
+                DisclosureGroup("Advanced (может запросить пароль Keychain)", isExpanded: $showAdvanced) {
+                    Text("Не нужно для обычной работы. Импорт из браузера / Cursor Safe Storage может показать диалог пароля.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    Text("Cursor cookie `WorkosCursorSessionToken`")
-                        .font(.caption)
-                    SecureField("Только если Cursor не подключился сам", text: $manualCursorCookie)
+                    Button("Взять ChatGPT из браузера (может спросить пароль)") {
+                        Task {
+                            let ok = await poller.connectChatGPTFromBrowserInteractive()
+                            statusIsError = !ok
+                            statusMessage = ok
+                                ? "ChatGPT из браузера."
+                                : (poller.chatGPTNeedsFDA
+                                    ? "Нужен Полный доступ к диску — или «Подключить ChatGPT» выше."
+                                    : "Не вышло. Лучше вход в окне (без пароля).")
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
 
-                    Text("ChatGPT cookie `__Secure-next-auth.session-token`")
+                    Button("Взять Claude из Desktop / браузера (может спросить пароль)") {
+                        Task {
+                            let ok = await poller.connectClaudeFromBrowserInteractive()
+                            statusIsError = !ok
+                            statusMessage = ok
+                                ? "Claude импортирован."
+                                : "Не вышло. Лучше «Подключить Claude» выше (без пароля)."
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    Button("Cursor Safe Storage (может спросить пароль)") {
+                        Task {
+                            let ok = await poller.connectCursorFromLocalInteractive()
+                            statusIsError = !ok
+                            statusMessage = ok
+                                ? "Cursor из Safe Storage."
+                                : "Нет доступа. Вставьте cookie ниже или войдите в Cursor."
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    if poller.chatGPTNeedsFDA || poller.claudeNeedsFDA {
+                        Button("Открыть «Полный доступ к диску»") {
+                            poller.openFullDiskAccessSettings()
+                        }
+                    }
+
+                    Text("Вставка сессии вручную (без Keychain unlock)")
+                        .font(.caption.weight(.semibold))
+                        .padding(.top, 6)
+
+                    Text("Cursor cookie `WorkosCursorSessionToken` или bearer")
+                        .font(.caption)
+                    SecureField("Вставьте значение", text: $manualCursorCookie)
+
+                    Text("ChatGPT cookie")
                         .font(.caption)
                     TextEditor(text: $manualChatCookie)
                         .font(.system(.caption, design: .monospaced))
-                        .frame(minHeight: 48)
+                        .frame(minHeight: 40)
 
-                    Text("Claude cookie `sessionKey=…`")
+                    Text("Claude `sessionKey=…`")
                         .font(.caption)
                     TextEditor(text: $manualClaudeCookie)
                         .font(.system(.caption, design: .monospaced))
-                        .frame(minHeight: 48)
+                        .frame(minHeight: 40)
                 }
             }
             .formStyle(.grouped)
@@ -184,7 +175,7 @@ struct SettingsView: View {
                     manualClaudeCookie = ""
                     poller.clearStoredSecrets()
                     statusIsError = false
-                    statusMessage = "Секреты очищены. Cursor может остаться на авто-входе."
+                    statusMessage = "Секреты очищены."
                 }
                 Spacer()
                 Button("Закрыть") { dismiss() }
@@ -193,34 +184,27 @@ struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 480, height: 640)
+        .frame(width: 500, height: 620)
         .onAppear {
             openAtLogin = LoginItemBootstrap.prefersOpenAtLogin
             manualChatCookie = SessionSecrets.get(.chatGPTSessionCookie) ?? ""
-            manualCursorCookie = SessionSecrets.get(.cursorSessionCookie) ?? ""
+            manualCursorCookie = SessionSecrets.get(.cursorSessionCookie)
+                ?? SessionSecrets.get(.cursorBearerOverride)
+                ?? ""
             manualClaudeCookie = SessionSecrets.get(.claudeSessionCookie) ?? ""
-            // Do not re-scan browsers / Safe Storage just because Settings opened.
         }
     }
 
     private var chatDetail: String {
-        if poller.chatGPTConnected {
-            if let src = poller.chatGPTAutoSource {
-                return "Сессия из \(src)"
-            }
-            return "Подключено"
-        }
-        return "Один вход в окне приложения"
+        if poller.chatGPTConnected { return "Подключено (окно входа)" }
+        return "Подключить в окне — без пароля"
     }
 
     private var claudeDetail: String {
         if poller.claudeConfigured {
-            if let src = poller.claudeAutoSource {
-                return "В трее · \(src)"
-            }
             return poller.claudeConnected ? "В трее · подключено" : "В трее · нет связи"
         }
-        return "Скрыт, пока не подключите"
+        return "Подключить в окне — без пароля"
     }
 
     private func connectionRow(title: String, ok: Bool, detail: String) -> some View {
@@ -247,8 +231,14 @@ struct SettingsView: View {
         AppPreferences.forceDemoMode = demoMode
 
         let c = manualCursorCookie.trimmingCharacters(in: .whitespacesAndNewlines)
-        if c.isEmpty { SessionSecrets.clear(.cursorSessionCookie) }
-        else { SessionSecrets.set(c, account: .cursorSessionCookie) }
+        if c.isEmpty {
+            SessionSecrets.clear(.cursorSessionCookie)
+            // Keep bearer unless user cleared everything via reset — only clear session cookie field.
+        } else if c.lowercased().hasPrefix("eyj") || c.count > 80 && !c.contains("=") {
+            SessionSecrets.set(c, account: .cursorBearerOverride)
+        } else {
+            SessionSecrets.set(c, account: .cursorSessionCookie)
+        }
 
         let g = manualChatCookie.trimmingCharacters(in: .whitespacesAndNewlines)
         if g.isEmpty { SessionSecrets.clear(.chatGPTSessionCookie) }
@@ -267,7 +257,7 @@ struct SettingsView: View {
             }
         } catch {
             statusIsError = true
-            statusMessage = "Сохранено, но «при входе» не удалось: \(error.localizedDescription). Если запускаете с DMG — скопируйте в Программы."
+            statusMessage = "Сохранено, но login item: \(error.localizedDescription). Скопируйте .app в Программы."
             poller.restartTimer()
             poller.refreshNow()
             return

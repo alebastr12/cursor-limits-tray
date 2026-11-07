@@ -2,12 +2,12 @@ import AppKit
 import ServiceManagement
 import Foundation
 
-/// Default «Открывать при входе» ON; respects explicit user off. DMG → optional copy to /Applications.
+/// Default «Открывать при входе» ON; respects explicit user off. DMG → optional copy (no admin loop).
 enum LoginItemBootstrap {
     private static let prefersKey = "loginItem.prefersOpenAtLogin"
     private static let dmgPromptKey = "install.dmgCopyPromptDone"
+    private static var didApplyThisProcess = false
 
-    /// `nil` in defaults → treat as ON (first launch / never set).
     static var prefersOpenAtLogin: Bool {
         get {
             if UserDefaults.standard.object(forKey: prefersKey) == nil { return true }
@@ -16,12 +16,9 @@ enum LoginItemBootstrap {
         set { UserDefaults.standard.set(newValue, forKey: prefersKey) }
     }
 
-    static var isRegistered: Bool {
-        SMAppService.mainApp.status == .enabled
-    }
-
-    /// Call once after status item install (skip snapshot/export runs).
     static func applyOnLaunch() {
+        guard !didApplyThisProcess else { return }
+        didApplyThisProcess = true
         offerCopyFromDMGIfNeeded()
         syncLoginItemWithPreference()
     }
@@ -36,12 +33,10 @@ enum LoginItemBootstrap {
                 try SMAppService.mainApp.unregister()
             }
         } catch {
-            // Login items often fail from a DMG mount; preference stays ON for next launch from /Applications.
             fputs("LoginItemBootstrap: \(error.localizedDescription)\n", stderr)
         }
     }
 
-    /// If running from a disk image, ask once to copy into /Applications (login items work reliably there).
     private static func offerCopyFromDMGIfNeeded() {
         let path = Bundle.main.bundlePath
         guard path.hasPrefix("/Volumes/") else { return }
@@ -50,7 +45,7 @@ enum LoginItemBootstrap {
 
         let alert = NSAlert()
         alert.messageText = "Установить в Программы?"
-        alert.informativeText = "Приложение запущено с диска. Для «Открывать при входе» лучше скопировать CursorLimitsTray в папку «Программы»."
+        alert.informativeText = "Запуск с DMG. Скопируйте в «Программы» — так надёжнее работает «Открывать при входе» (без пароля администратора при обычной установке)."
         alert.alertStyle = .informational
         alert.addButton(withTitle: "Скопировать в Программы")
         alert.addButton(withTitle: "Не сейчас")
@@ -69,6 +64,7 @@ enum LoginItemBootstrap {
         let dest = "/Applications/CursorLimitsTray.app"
         do {
             if fm.fileExists(atPath: dest) {
+                // Prefer replace without elevating; if locked, show manual drag (no auth retry).
                 try fm.removeItem(atPath: dest)
             }
             try fm.copyItem(atPath: bundlePath, toPath: dest)
@@ -78,8 +74,8 @@ enum LoginItemBootstrap {
             }
         } catch {
             let alert = NSAlert()
-            alert.messageText = "Не удалось скопировать"
-            alert.informativeText = error.localizedDescription + "\nПеретащите приложение в «Программы» вручную."
+            alert.messageText = "Не удалось скопировать без пароля"
+            alert.informativeText = "Перетащите CursorLimitsTray.app в «Программы» вручную.\n\(error.localizedDescription)"
             alert.runModal()
         }
     }

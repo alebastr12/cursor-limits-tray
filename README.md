@@ -2,41 +2,35 @@
 
 Native macOS menu-bar app for live **Cursor** / **ChatGPT** / **Claude** usage limits.
 
-![Menu bar](docs/screenshots/tray-menubar-live.png)
-
 ## Install
 
-Download the latest [**`.dmg`**](https://github.com/alebastr12/cursor-limits-tray/releases/latest) → open → drag **CursorLimitsTray** to **Applications**.
+[**Download DMG**](https://github.com/alebastr12/cursor-limits-tray/releases/latest) → Applications.  
+Ad-hoc (not notarized): right-click → **Open**.
 
-Gatekeeper (ad-hoc, not notarized): **right-click → Open**.
+## Product answer: zero password prompts?
+
+**YES for normal use.** Default path = **0** SecurityAgent / admin / browser Keychain dialogs.
+
+| Action | Dialogs |
+|--------|---------|
+| Launch / poll | **Zero** |
+| Подключить ChatGPT / Claude (login window) | **Zero** Keychain |
+| Открывать при входе / copy from DMG | No admin loop (manual drag if copy fails) |
+| Advanced → browser / Cursor Safe Storage | **May** ask Keychain password — optional |
+
+Cursor uses an app-cached token; if missing, paste session in Advanced (no Keychain unlock) or optional Safe Storage there.
 
 ## Features
 
-- **Bars** app icon + menu-bar glyph
-- Tray & popover show **only connected** providers (no empty `C—` / `G—` / `A—`)
-- Connect only in **Настройки…** (in-app login preferred — no Chrome Keychain)
-- At most **one** foreign Keychain unlock until Reset
-- **Открывать при входе** ON by default (turn off in Settings); from a DMG, one prompt to copy into Applications
-- Closing windows keeps the tray; **Выйти** / ⌘Q quits
-
-## Usage
-
-1. Launch → bars glyph in the menu bar (percentages appear after connect).
-2. Open popover → **Настройки…** → connect Cursor / ChatGPT / Claude.
-3. Live `%` shows only for authorized providers with data.
-
-## Keychain
-
-Launch/poll: **zero** SecurityAgent dialogs.  
-Login windows: **zero** Keychain.  
-«Взять из браузера» / Cursor unlock: silent first, then **at most one** unlock until Reset.
+- Bars app icon; tray shows only connected providers with live `%`
+- Connect only in Settings (WKWebView for ChatGPT/Claude)
+- Open at login ON by default
 
 ## Build
 
 ```bash
-./Scripts/build-icons.sh
 ./Scripts/build-app.sh
-./Scripts/package-dmg.sh 0.2.5
+./Scripts/package-dmg.sh 0.2.6
 ```
 
 ## License
