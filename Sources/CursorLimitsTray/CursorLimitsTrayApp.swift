@@ -50,6 +50,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Install live menu-bar item unless we're only doing offline snapshot export.
         if snapshotPath == nil && settingsPath == nil {
             StatusItemController.shared.install(poller: poller)
+            // Default ON: register login item; prompt once if launched from a DMG.
+            LoginItemBootstrap.applyOnLaunch()
         }
 
         windowCloseObserver = NotificationCenter.default.addObserver(

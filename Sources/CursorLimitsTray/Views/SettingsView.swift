@@ -195,7 +195,7 @@ struct SettingsView: View {
         .padding(20)
         .frame(width: 480, height: 640)
         .onAppear {
-            openAtLogin = SMAppService.mainApp.status == .enabled
+            openAtLogin = LoginItemBootstrap.prefersOpenAtLogin
             manualChatCookie = SessionSecrets.get(.chatGPTSessionCookie) ?? ""
             manualCursorCookie = SessionSecrets.get(.cursorSessionCookie) ?? ""
             manualClaudeCookie = SessionSecrets.get(.claudeSessionCookie) ?? ""
@@ -258,12 +258,16 @@ struct SettingsView: View {
         if a.isEmpty { SessionSecrets.clear(.claudeSessionCookie) }
         else { SessionSecrets.set(a, account: .claudeSessionCookie) }
 
+        LoginItemBootstrap.prefersOpenAtLogin = openAtLogin
         do {
-            if openAtLogin { try SMAppService.mainApp.register() }
-            else { try SMAppService.mainApp.unregister() }
+            if openAtLogin {
+                try SMAppService.mainApp.register()
+            } else if SMAppService.mainApp.status == .enabled {
+                try SMAppService.mainApp.unregister()
+            }
         } catch {
             statusIsError = true
-            statusMessage = "Сохранено, но «при входе» не удалось: \(error.localizedDescription)"
+            statusMessage = "Сохранено, но «при входе» не удалось: \(error.localizedDescription). Если запускаете с DMG — скопируйте в Программы."
             poller.restartTimer()
             poller.refreshNow()
             return

@@ -16,6 +16,7 @@ Gatekeeper (ad-hoc, not notarized): **right-click → Open**.
 - Tray & popover show **only connected** providers (no empty `C—` / `G—` / `A—`)
 - Connect only in **Настройки…** (in-app login preferred — no Chrome Keychain)
 - At most **one** foreign Keychain unlock until Reset
+- **Открывать при входе** ON by default (turn off in Settings); from a DMG, one prompt to copy into Applications
 - Closing windows keeps the tray; **Выйти** / ⌘Q quits
 
 ## Usage
@@ -35,7 +36,7 @@ Login windows: **zero** Keychain.
 ```bash
 ./Scripts/build-icons.sh
 ./Scripts/build-app.sh
-./Scripts/package-dmg.sh 0.2.4
+./Scripts/package-dmg.sh 0.2.5
 ```
 
 ## License
