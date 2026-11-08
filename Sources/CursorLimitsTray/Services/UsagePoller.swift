@@ -13,7 +13,9 @@ final class UsagePoller: ObservableObject {
     @Published private(set) var claudeConnected = false
     /// True after user connected Claude (secrets in app Keychain). Hidden from tray/popover until then.
     @Published private(set) var claudeConfigured = false
-    /// Compact menu-bar: only live % for connected providers (e.g. `C75% · G40%`). Empty if none.
+    /// Compact menu-bar: icon+% for connected providers only. Empty if none.
+    @Published private(set) var menuBarSegments: [MenuBarSegment] = []
+    /// Accessibility / legacy plain text (e.g. `63% · 93%`).
     @Published private(set) var menuBarText: String = ""
     @Published private(set) var cursorSeverity: LimitSeverity = .unknown
     @Published private(set) var chatGPTSeverity: LimitSeverity = .unknown
@@ -293,31 +295,44 @@ final class UsagePoller: ObservableObject {
     }
 
     private func publishMenuBar() {
-        // Only live % for connected providers — never C— / G— / A— placeholders.
-        var parts: [String] = []
+        // Only connected providers with a live % — no letter placeholders.
+        var segments: [MenuBarSegment] = []
 
         if cursorConnected, let cLeft = remainingPercent(from: snapshot.cursor) {
             cursorSeverity = severity(remaining: cLeft, connected: true)
-            parts.append(String(format: "C%.0f%%", cLeft))
+            segments.append(MenuBarSegment(
+                provider: .cursor,
+                remainingPercent: Int(cLeft.rounded()),
+                severity: cursorSeverity
+            ))
         } else {
             cursorSeverity = .unknown
         }
 
         if chatGPTConnected, let gLeft = remainingPercent(from: snapshot.chatGPT) {
             chatGPTSeverity = severity(remaining: gLeft, connected: true)
-            parts.append(String(format: "G%.0f%%", gLeft))
+            segments.append(MenuBarSegment(
+                provider: .chatGPT,
+                remainingPercent: Int(gLeft.rounded()),
+                severity: chatGPTSeverity
+            ))
         } else {
             chatGPTSeverity = .unknown
         }
 
         if claudeConnected, let aLeft = remainingPercent(from: snapshot.claude) {
             claudeSeverity = severity(remaining: aLeft, connected: true)
-            parts.append(String(format: "A%.0f%%", aLeft))
+            segments.append(MenuBarSegment(
+                provider: .claude,
+                remainingPercent: Int(aLeft.rounded()),
+                severity: claudeSeverity
+            ))
         } else {
             claudeSeverity = .unknown
         }
 
-        menuBarText = parts.joined(separator: " · ")
+        menuBarSegments = segments
+        menuBarText = segments.map { "\($0.remainingPercent)%" }.joined(separator: " · ")
     }
 
     private func remainingPercent(from provider: ProviderSnapshot) -> Double? {

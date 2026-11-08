@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import Combine
 
-/// AppKit status item with compact live title near the notch.
+/// AppKit status item with compact icon+% title near the notch.
 @MainActor
 final class StatusItemController: NSObject {
     static let shared = StatusItemController()
@@ -19,7 +19,7 @@ final class StatusItemController: NSObject {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.target = self
         item.button?.action = #selector(togglePopover(_:))
-        item.button?.imagePosition = .imageLeading
+        item.button?.imagePosition = .imageOnly
         item.button?.setAccessibilityTitle("Tray AI limits")
         statusItem = item
 
@@ -30,17 +30,12 @@ final class StatusItemController: NSObject {
         pop.contentViewController = NSHostingController(rootView: PopoverView(poller: poller))
         popover = pop
 
-        poller.$menuBarText
+        poller.$menuBarSegments
             .combineLatest(poller.$cursorConnected, poller.$chatGPTConnected, poller.$claudeConnected)
             .receive(on: RunLoop.main)
-            .sink { [weak self] text, cOK, gOK, aOK in
-                guard let self, let poller = self.poller else { return }
-                self.applyTitle(
-                    text,
-                    cursor: poller.cursorSeverity,
-                    chat: poller.chatGPTSeverity,
-                    claude: poller.claudeSeverity
-                )
+            .sink { [weak self] segments, cOK, gOK, aOK in
+                guard let self else { return }
+                self.applyTitle(segments: segments)
                 let n = [cOK, gOK, aOK].filter { $0 }.count
                 let height: CGFloat
                 switch n {
@@ -53,68 +48,104 @@ final class StatusItemController: NSObject {
             }
             .store(in: &cancellables)
 
-        applyTitle(
-            poller.menuBarText,
-            cursor: poller.cursorSeverity,
-            chat: poller.chatGPTSeverity,
-            claude: poller.claudeSeverity
-        )
+        applyTitle(segments: poller.menuBarSegments)
         poller.start()
     }
 
-    private func applyTitle(
-        _ text: String,
-        cursor: LimitSeverity,
-        chat: LimitSeverity,
-        claude: LimitSeverity
-    ) {
+    private func applyTitle(segments: [MenuBarSegment]) {
         guard let button = statusItem?.button else { return }
 
-        let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
-        let attr = NSMutableAttributedString(string: text, attributes: [
-            .font: font,
-            .foregroundColor: NSColor.labelColor
-        ])
+        let a11y = segments.isEmpty
+            ? "Tray AI limits"
+            : "Tray AI limits " + segments.map {
+                "\($0.provider.accessibilityName) \($0.remainingPercent)%"
+            }.joined(separator: ", ")
+        button.setAccessibilityTitle(a11y)
 
-        // Color whatever letters are actually present (no placeholders).
-        colorSegment(in: attr, letter: "C", severity: cursor, font: font)
-        colorSegment(in: attr, letter: "G", severity: chat, font: font)
-        colorSegment(in: attr, letter: "A", severity: claude, font: font)
+        if segments.isEmpty {
+            button.attributedTitle = NSAttributedString(string: "")
+            button.image = appGlyph()
+            button.imagePosition = .imageOnly
+            return
+        }
 
-        button.attributedTitle = attr
-        button.setAccessibilityTitle(text.isEmpty ? "Tray AI limits" : "Tray AI limits \(text)")
+        // Icon+% strip only — no leading app glyph (saves notch space).
+        button.image = nil
+        button.imagePosition = .noImage
+        button.attributedTitle = composedTitle(segments: segments)
+    }
 
-        let image: NSImage?
+    private func composedTitle(segments: [MenuBarSegment]) -> NSAttributedString {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
+        let result = NSMutableAttributedString()
+        let separator = NSAttributedString(
+            string: " · ",
+            attributes: [
+                .font: font,
+                .foregroundColor: NSColor.secondaryLabelColor
+            ]
+        )
+
+        for (index, segment) in segments.enumerated() {
+            if index > 0 { result.append(separator) }
+
+            let color = nsColor(segment.severity)
+            if let icon = symbolAttachment(
+                name: segment.provider.symbolName,
+                color: color,
+                font: font
+            ) {
+                result.append(NSAttributedString(attachment: icon))
+                result.append(NSAttributedString(
+                    string: "\u{200A}", // hair space between icon and %
+                    attributes: [.font: font]
+                ))
+            }
+
+            result.append(NSAttributedString(
+                string: "\(segment.remainingPercent)%",
+                attributes: [
+                    .font: font,
+                    .foregroundColor: color
+                ]
+            ))
+        }
+        return result
+    }
+
+    private func symbolAttachment(name: String, color: NSColor, font: NSFont) -> NSTextAttachment? {
+        let config = NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
+        guard let base = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config) else { return nil }
+
+        let size = base.size
+        guard size.width > 0, size.height > 0 else { return nil }
+
+        let tinted = NSImage(size: size, flipped: false) { rect in
+            base.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+            color.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+
+        let attachment = NSTextAttachment()
+        attachment.image = tinted
+        // Optical align with digit cap-height.
+        let yOffset = (font.capHeight - size.height) / 2
+        attachment.bounds = CGRect(x: 0, y: yOffset, width: size.width, height: size.height)
+        return attachment
+    }
+
+    private func appGlyph() -> NSImage? {
         if let url = Bundle.main.url(forResource: "MenuBarGlyph", withExtension: "png"),
            let custom = NSImage(contentsOf: url) {
             custom.isTemplate = true
             custom.size = NSSize(width: 16, height: 16)
-            image = custom
-        } else {
-            let sym = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: nil)
-            sym?.isTemplate = true
-            image = sym
+            return custom
         }
-        button.image = image
-        button.imagePosition = text.isEmpty ? .imageOnly : .imageLeading
-    }
-
-    private func colorSegment(
-        in attr: NSMutableAttributedString,
-        letter: Character,
-        severity: LimitSeverity,
-        font: NSFont
-    ) {
-        let s = attr.string as NSString
-        let full = s as String
-        let pattern = "\(letter)[^ ·]+"
-        if let regex = try? NSRegularExpression(pattern: pattern),
-           let match = regex.firstMatch(in: full, range: NSRange(location: 0, length: s.length)) {
-            attr.addAttributes([
-                .foregroundColor: nsColor(severity),
-                .font: font
-            ], range: match.range)
-        }
+        let sym = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: nil)
+        sym?.isTemplate = true
+        return sym
     }
 
     private func nsColor(_ severity: LimitSeverity) -> NSColor {
