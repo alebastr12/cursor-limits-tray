@@ -183,7 +183,8 @@ final class UsagePoller: ObservableObject {
 
     func saveChatGPTCookie(_ header: String) {
         SessionSecrets.set(header, account: .chatGPTSessionCookie)
-        chatGPTConnected = true
+        // Optimistic UI: keep connected while refresh fetches rows.
+        chatGPTConnected = SessionSecrets.get(.chatGPTSessionCookie) != nil
         chatGPTNeedsFDA = false
         connectionNote = "ChatGPT подключён"
         refreshNow()
@@ -191,8 +192,9 @@ final class UsagePoller: ObservableObject {
 
     func saveClaudeCookie(_ header: String) {
         SessionSecrets.set(header, account: .claudeSessionCookie)
-        claudeConfigured = true
-        claudeConnected = true
+        claudeConfigured = SessionSecrets.get(.claudeSessionCookie) != nil
+            || SessionSecrets.get(.claudeBearerOverride) != nil
+        claudeConnected = claudeConfigured
         claudeNeedsFDA = false
         connectionNote = "Claude подключён"
         refreshNow()
@@ -260,10 +262,25 @@ final class UsagePoller: ObservableObject {
                 if chatGPTConnected {
                     let src = chatGPTAutoSource.map { " · \($0)" } ?? ""
                     next.chatGPT.status = next.chatGPT.status.contains("Подключено") ? next.chatGPT.status : "Подключено\(src)"
+                } else if !next.chatGPT.rows.isEmpty {
+                    // Keep showing last rows if status/error odd but data present.
+                    chatGPTConnected = true
                 }
             } catch {
-                chatGPTConnected = false
-                next.chatGPT = ProviderSnapshot(name: "ChatGPT", status: "", rows: [], fetchedAt: next.chatGPT.fetchedAt, error: nil)
+                // Keep prior rows + connected if secrets still present (transient API blip).
+                if !snapshot.chatGPT.rows.isEmpty {
+                    next.chatGPT = snapshot.chatGPT
+                    chatGPTConnected = true
+                } else {
+                    chatGPTConnected = false
+                    next.chatGPT = ProviderSnapshot(
+                        name: "ChatGPT",
+                        status: "Нет связи",
+                        rows: [],
+                        fetchedAt: next.chatGPT.fetchedAt,
+                        error: humanizeChatGPT(error)
+                    )
+                }
             }
         } else {
             chatGPTConnected = false

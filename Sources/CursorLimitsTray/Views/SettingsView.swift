@@ -44,8 +44,10 @@ struct SettingsView: View {
                     Button {
                         ChatGPTConnectController.shared.present { header in
                             poller.saveChatGPTCookie(header)
+                            // Keep Advanced field in sync so Save won't wipe an empty TextEditor.
+                            manualChatCookie = header
                             statusIsError = false
-                            statusMessage = "ChatGPT подключён (без Keychain)."
+                            statusMessage = "ChatGPT подключён."
                         }
                     } label: {
                         Text("Подключить ChatGPT")
@@ -65,8 +67,9 @@ struct SettingsView: View {
                     Button {
                         ClaudeConnectController.shared.present { header in
                             poller.saveClaudeCookie(header)
+                            manualClaudeCookie = header
                             statusIsError = false
-                            statusMessage = "Claude подключён (без Keychain)."
+                            statusMessage = "Claude подключён."
                         }
                     } label: {
                         Text("Подключить Claude")
@@ -230,23 +233,27 @@ struct SettingsView: View {
         AppPreferences.pollIntervalSeconds = pollSeconds
         AppPreferences.forceDemoMode = demoMode
 
+        // Empty Advanced fields must NOT wipe secrets from «Подключить …» —
+        // that was clearing ChatGPT right after a successful login window.
+        // Clearing is only via «Сбросить секреты».
         let c = manualCursorCookie.trimmingCharacters(in: .whitespacesAndNewlines)
-        if c.isEmpty {
-            SessionSecrets.clear(.cursorSessionCookie)
-            // Keep bearer unless user cleared everything via reset — only clear session cookie field.
-        } else if c.lowercased().hasPrefix("eyj") || c.count > 80 && !c.contains("=") {
-            SessionSecrets.set(c, account: .cursorBearerOverride)
-        } else {
-            SessionSecrets.set(c, account: .cursorSessionCookie)
+        if !c.isEmpty {
+            if c.lowercased().hasPrefix("eyj") || (c.count > 80 && !c.contains("=")) {
+                SessionSecrets.set(c, account: .cursorBearerOverride)
+            } else {
+                SessionSecrets.set(c, account: .cursorSessionCookie)
+            }
         }
 
         let g = manualChatCookie.trimmingCharacters(in: .whitespacesAndNewlines)
-        if g.isEmpty { SessionSecrets.clear(.chatGPTSessionCookie) }
-        else { SessionSecrets.set(g, account: .chatGPTSessionCookie) }
+        if !g.isEmpty {
+            SessionSecrets.set(g, account: .chatGPTSessionCookie)
+        }
 
         let a = manualClaudeCookie.trimmingCharacters(in: .whitespacesAndNewlines)
-        if a.isEmpty { SessionSecrets.clear(.claudeSessionCookie) }
-        else { SessionSecrets.set(a, account: .claudeSessionCookie) }
+        if !a.isEmpty {
+            SessionSecrets.set(a, account: .claudeSessionCookie)
+        }
 
         LoginItemBootstrap.prefersOpenAtLogin = openAtLogin
         LoginItemBootstrap.syncLoginItemWithPreference(quiet: false)

@@ -21,9 +21,16 @@ enum SessionSecrets {
     }
 
     static func set(_ value: String, account: KeychainStore.Account) {
-        values[account] = value
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        values[account] = trimmed
         SecretsPresence.mark(account)
-        try? KeychainStore.save(value, account: account)
+        do {
+            try KeychainStore.save(trimmed, account: account)
+        } catch {
+            // Memory + presence still hold for this process; next launch may need reconnect.
+            fputs("SessionSecrets: Keychain save failed for \(account.rawValue): \(error.localizedDescription)\n", stderr)
+        }
     }
 
     static func clear(_ account: KeychainStore.Account) {
