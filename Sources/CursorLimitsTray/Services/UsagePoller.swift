@@ -126,42 +126,46 @@ final class UsagePoller: ObservableObject {
         return false
     }
 
-    /// «Взять сессию из браузера» — silent all, then at most ONE Keychain unlock.
+    /// «Взять сессию из браузера» — Advanced only; may unlock Keychain once.
     @discardableResult
     func connectChatGPTFromBrowserInteractive() async -> Bool {
-        switch BrowserCookieReader.findChatGPTSessionCookie(allowKeychainPrompt: true) {
-        case .found(let header, let source):
-            SessionSecrets.set(header, account: .chatGPTSessionCookie)
-            chatGPTAutoSource = source
-            chatGPTNeedsFDA = false
-            chatGPTConnected = true
-            refreshNow()
-            return true
-        case .needsFullDiskAccess:
-            chatGPTNeedsFDA = true
-            return false
-        case .notFound, .error:
-            return false
+        ForeignKeychainGate.withForeignAccessAllowed {
+            switch BrowserCookieReader.findChatGPTSessionCookie(allowKeychainPrompt: true) {
+            case .found(let header, let source):
+                SessionSecrets.set(header, account: .chatGPTSessionCookie)
+                chatGPTAutoSource = source
+                chatGPTNeedsFDA = false
+                chatGPTConnected = true
+                refreshNow()
+                return true
+            case .needsFullDiskAccess:
+                chatGPTNeedsFDA = true
+                return false
+            case .notFound, .error:
+                return false
+            }
         }
     }
 
     @discardableResult
     func connectClaudeFromBrowserInteractive() async -> Bool {
-        if let local = ClaudeLocalAuth.loadWithSingleUnlock() {
-            if let cookie = local.sessionCookie {
-                SessionSecrets.set(cookie, account: .claudeSessionCookie)
+        ForeignKeychainGate.withForeignAccessAllowed {
+            if let local = ClaudeLocalAuth.loadWithSingleUnlock() {
+                if let cookie = local.sessionCookie {
+                    SessionSecrets.set(cookie, account: .claudeSessionCookie)
+                }
+                if let oauth = local.oauthAccessToken {
+                    SessionSecrets.set(oauth, account: .claudeBearerOverride)
+                }
+                claudeAutoSource = local.source
+                claudeConfigured = true
+                claudeConnected = true
+                claudeNeedsFDA = false
+                refreshNow()
+                return true
             }
-            if let oauth = local.oauthAccessToken {
-                SessionSecrets.set(oauth, account: .claudeBearerOverride)
-            }
-            claudeAutoSource = local.source
-            claudeConfigured = true
-            claudeConnected = true
-            claudeNeedsFDA = false
-            refreshNow()
-            return true
+            return false
         }
-        return false
     }
 
     /// Advanced only — may prompt Keychain.

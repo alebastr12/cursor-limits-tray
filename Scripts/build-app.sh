@@ -25,6 +25,9 @@ cp "$BIN" "$MACOS/CursorLimitsTray"
 cp "$ROOT/Resources/Info.plist" "$CONTENTS/Info.plist"
 cp "$ROOT/Resources/AppIcon.icns" "$RESOURCES/AppIcon.icns"
 cp "$ROOT/Resources/MenuBarGlyph.png" "$RESOURCES/MenuBarGlyph.png"
+# Recognizable provider glyphs for menu bar (template PNGs)
+mkdir -p "$RESOURCES/MenuBarProviders"
+find "$ROOT/Resources/MenuBarProviders" -maxdepth 1 -name 'Provider*.png' -exec cp {} "$RESOURCES/MenuBarProviders/" \;
 chmod +x "$MACOS/CursorLimitsTray"
 
 # Ad-hoc sign so Keychain / local network prompts work more predictably.

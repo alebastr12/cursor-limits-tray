@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Compact live title — SF Symbol + % for each connected provider.
+/// Compact live title — provider template icon + % for each connected provider.
 struct MenuBarLabel: View {
     @ObservedObject var poller: UsagePoller
 
@@ -18,8 +18,12 @@ struct MenuBarLabel: View {
                             .foregroundStyle(.secondary)
                     }
                     HStack(spacing: 2) {
-                        Image(systemName: segment.provider.symbolName)
-                            .font(.system(size: 10, weight: .semibold))
+                        if let ns = loadTemplate(segment.provider.resourceName) {
+                            Image(nsImage: ns)
+                                .resizable()
+                                .renderingMode(.template)
+                                .frame(width: 11, height: 11)
+                        }
                         Text("\(segment.remainingPercent)%")
                             .font(.system(size: 11, weight: .semibold, design: .monospaced))
                     }
@@ -34,5 +38,19 @@ struct MenuBarLabel: View {
                     "\($0.provider.accessibilityName) \($0.remainingPercent)%"
                 }.joined(separator: ", ")
         )
+    }
+
+    private func loadTemplate(_ name: String) -> NSImage? {
+        if let url = Bundle.main.url(forResource: name, withExtension: "png", subdirectory: "MenuBarProviders"),
+           let img = NSImage(contentsOf: url) {
+            img.isTemplate = true
+            return img
+        }
+        let path = Bundle.main.bundlePath + "/Contents/Resources/MenuBarProviders/\(name).png"
+        if let img = NSImage(contentsOfFile: path) {
+            img.isTemplate = true
+            return img
+        }
+        return nil
     }
 }

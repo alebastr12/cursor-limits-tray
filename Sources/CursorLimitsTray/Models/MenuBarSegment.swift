@@ -7,12 +7,12 @@ struct MenuBarSegment: Equatable {
         case chatGPT
         case claude
 
-        /// Generic SF Symbols — not vendor logos.
-        var symbolName: String {
+        /// Template PNG in Resources/MenuBarProviders (not SF Symbol).
+        var resourceName: String {
             switch self {
-            case .cursor: return "chevron.left.forwardslash.chevron.right"
-            case .chatGPT: return "bubble.left.fill"
-            case .claude: return "sparkles"
+            case .cursor: return "ProviderCursor"
+            case .chatGPT: return "ProviderChatGPT"
+            case .claude: return "ProviderClaude"
             }
         }
 

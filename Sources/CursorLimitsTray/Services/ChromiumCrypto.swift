@@ -35,11 +35,16 @@ enum ChromiumCrypto {
     }
 
     /// Read Chromium / Electron Safe Storage password.
-    /// - Silent: never shows UI.
-    /// - Interactive: at most **one** foreign unlock app-wide until Reset (not per browser).
+    /// Default launch/poll: **memory cache only** — never SecItem (ACL can still prompt).
+    /// Advanced: open `ForeignKeychainGate.withForeignAccessAllowed`.
     static func keychainPassword(service: String, account: String = "Chrome", allowPrompt: Bool = false) -> String? {
         let key = cacheKey(service: service, account: account)
         if let cached = passwordCache[key] { return cached }
+
+        // Hard rule: no foreign SecItem outside Advanced import.
+        guard ForeignKeychainGate.allowsForeignAccess else {
+            return nil
+        }
 
         if let silent = keychainPasswordSilent(service: service, account: account) {
             passwordCache[key] = silent

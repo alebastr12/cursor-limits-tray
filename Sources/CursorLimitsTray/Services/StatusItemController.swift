@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import Combine
 
-/// AppKit status item with compact icon+% title near the notch.
+/// AppKit status item with compact brand-icon + % title near the notch.
 @MainActor
 final class StatusItemController: NSObject {
     static let shared = StatusItemController()
@@ -69,7 +69,6 @@ final class StatusItemController: NSObject {
             return
         }
 
-        // Icon+% strip only — no leading app glyph (saves notch space).
         button.image = nil
         button.imagePosition = .noImage
         button.attributedTitle = composedTitle(segments: segments)
@@ -90,14 +89,10 @@ final class StatusItemController: NSObject {
             if index > 0 { result.append(separator) }
 
             let color = nsColor(segment.severity)
-            if let icon = symbolAttachment(
-                name: segment.provider.symbolName,
-                color: color,
-                font: font
-            ) {
+            if let icon = providerAttachment(resource: segment.provider.resourceName, color: color, font: font) {
                 result.append(NSAttributedString(attachment: icon))
                 result.append(NSAttributedString(
-                    string: "\u{200A}", // hair space between icon and %
+                    string: "\u{200A}",
                     attributes: [.font: font]
                 ))
             }
@@ -113,27 +108,42 @@ final class StatusItemController: NSObject {
         return result
     }
 
-    private func symbolAttachment(name: String, color: NSColor, font: NSFont) -> NSTextAttachment? {
-        let config = NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
-        guard let base = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-            .withSymbolConfiguration(config) else { return nil }
-
-        let size = base.size
-        guard size.width > 0, size.height > 0 else { return nil }
-
+    private func providerAttachment(resource: String, color: NSColor, font: NSFont) -> NSTextAttachment? {
+        guard let base = loadProviderTemplate(named: resource) else { return nil }
+        let side: CGFloat = 12
+        let size = NSSize(width: side, height: side)
         let tinted = NSImage(size: size, flipped: false) { rect in
+            // Template: draw as mask then fill with severity color.
             base.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
             color.set()
             rect.fill(using: .sourceAtop)
             return true
         }
-
         let attachment = NSTextAttachment()
         attachment.image = tinted
-        // Optical align with digit cap-height.
-        let yOffset = (font.capHeight - size.height) / 2
-        attachment.bounds = CGRect(x: 0, y: yOffset, width: size.width, height: size.height)
+        let yOffset = (font.capHeight - side) / 2
+        attachment.bounds = CGRect(x: 0, y: yOffset, width: side, height: side)
         return attachment
+    }
+
+    private func loadProviderTemplate(named: String) -> NSImage? {
+        if let url = Bundle.main.url(forResource: named, withExtension: "png", subdirectory: "MenuBarProviders"),
+           let img = NSImage(contentsOf: url) {
+            img.isTemplate = true
+            return img
+        }
+        if let url = Bundle.main.url(forResource: named, withExtension: "png"),
+           let img = NSImage(contentsOf: url) {
+            img.isTemplate = true
+            return img
+        }
+        // Fallback path when resources are copied flat into Resources/
+        let path = Bundle.main.bundlePath + "/Contents/Resources/MenuBarProviders/\(named).png"
+        if let img = NSImage(contentsOfFile: path) {
+            img.isTemplate = true
+            return img
+        }
+        return nil
     }
 
     private func appGlyph() -> NSImage? {

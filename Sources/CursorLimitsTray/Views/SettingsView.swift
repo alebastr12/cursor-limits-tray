@@ -249,15 +249,12 @@ struct SettingsView: View {
         else { SessionSecrets.set(a, account: .claudeSessionCookie) }
 
         LoginItemBootstrap.prefersOpenAtLogin = openAtLogin
-        do {
-            if openAtLogin {
-                try SMAppService.mainApp.register()
-            } else if SMAppService.mainApp.status == .enabled {
-                try SMAppService.mainApp.unregister()
-            }
-        } catch {
+        LoginItemBootstrap.syncLoginItemWithPreference(quiet: false)
+        if openAtLogin, SMAppService.mainApp.status != .enabled,
+           !Bundle.main.bundlePath.hasPrefix("/Volumes/") {
+            // register may have failed quietly — surface once in Settings only.
             statusIsError = true
-            statusMessage = "Сохранено, но login item: \(error.localizedDescription). Скопируйте .app в Программы."
+            statusMessage = "Сохранено. Login item не включился — скопируйте .app в Программы и разрешите в Системных настройках."
             poller.restartTimer()
             poller.refreshNow()
             return

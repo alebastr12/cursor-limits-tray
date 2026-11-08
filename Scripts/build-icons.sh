@@ -1,40 +1,32 @@
 #!/usr/bin/env bash
-# Build Resources/AppIcon.icns from Resources/icon-option-bars.jpg
+# Build full-bleed Resources/AppIcon.icns (no white corner chrome).
+# macOS applies the squircle mask — PNGs must be square full-bleed, not pre-rounded on white.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SRC="$ROOT/Resources/icon-option-bars.jpg"
 ICONSET="$ROOT/Resources/AppIcon.iconset"
 ICNS="$ROOT/Resources/AppIcon.icns"
 
-if [[ ! -f "$SRC" ]]; then
-  echo "Missing $SRC" >&2
-  exit 1
-fi
-
-python3 - "$SRC" "$ROOT" <<'PY'
-import sys, os
+python3 - "$ROOT" <<'PY'
+import os, sys
 from PIL import Image, ImageDraw
 
-src_path, root = sys.argv[1], sys.argv[2]
-iconset = os.path.join(root, "Resources", "AppIcon.iconset")
+root = sys.argv[1]
+res = os.path.join(root, "Resources")
+iconset = os.path.join(res, "AppIcon.iconset")
 os.makedirs(iconset, exist_ok=True)
 
-img = Image.open(src_path).convert("RGBA")
-bg = (36, 41, 46, 255)
-px = img.getpixel((2, 2))
-corner_luma = (px[0] + px[1] + px[2]) / 3
-base = Image.new("RGBA", (1024, 1024), bg)
-if corner_luma > 200 or px[3] < 200:
-    pad = 40
-    inner = img.resize((1024 - 2 * pad, 1024 - 2 * pad), Image.Resampling.LANCZOS)
-    base.paste(inner, (pad, pad), inner)
-else:
-    flat = Image.new("RGBA", (1024, 1024), bg)
-    flat.paste(img, (0, 0), img)
-    base = flat
+# Full-bleed dark charcoal + bars (no white, no pre-rounded mask)
+master = Image.new("RGBA", (1024, 1024), (28, 32, 36, 255))
+draw = ImageDraw.Draw(master)
+bars = [
+    (250, 220, 390, 820, (140, 210, 170, 255)),
+    (437, 420, 577, 820, (236, 180, 70, 255)),
+    (624, 300, 764, 820, (230, 110, 85, 255)),
+]
+for x0, y0, x1, y1, col in bars:
+    draw.rounded_rectangle([x0, y0, x1, y1], radius=(x1 - x0) // 2, fill=col)
 
-master = base.convert("RGBA")
-master.save(os.path.join(root, "Resources", "AppIcon-1024.png"), "PNG")
+master.save(os.path.join(res, "AppIcon-1024.png"), format="PNG")
 
 sizes = [
     (16, "icon_16x16.png"), (32, "diana.k@example.org"),
@@ -44,13 +36,15 @@ sizes = [
     (512, "icon_512x512.png"), (1024, "walt.e@example.net"),
 ]
 for px_size, name in sizes:
-    master.resize((px_size, px_size), Image.Resampling.LANCZOS).save(os.path.join(iconset, name), "PNG")
+    master.resize((px_size, px_size), Image.Resampling.LANCZOS).save(
+        os.path.join(iconset, name), format="PNG"
+    )
 
 mb = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
 d = ImageDraw.Draw(mb)
 for b in [(14, 10, 24, 54), (28, 30, 38, 54), (42, 18, 52, 54)]:
     d.rounded_rectangle(b, radius=4, fill=(0, 0, 0, 255))
-mb.save(os.path.join(root, "Resources", "MenuBarGlyph.png"), "PNG")
+mb.save(os.path.join(res, "MenuBarGlyph.png"), format="PNG")
 print("icons staged in", iconset)
 PY
 

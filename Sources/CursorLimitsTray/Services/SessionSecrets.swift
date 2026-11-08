@@ -8,27 +8,34 @@ enum SessionSecrets {
 
     static func get(_ account: KeychainStore.Account) -> String? {
         if let cached = values[account], !cached.isEmpty { return cached }
-        // App-owned Keychain only — AfterFirstUnlockThisDeviceOnly, no ACL prompts in normal use.
+        // Fresh install / never saved: skip SecItem entirely (avoids ACL password spam after re-sign).
+        guard SecretsPresence.has(account) else { return nil }
+        // App-owned Keychain only — never prompt.
         if let loaded = KeychainStore.load(account, allowPrompt: false), !loaded.isEmpty {
             values[account] = loaded
             return loaded
         }
+        // Interaction-required or missing after re-sign → drop presence; user reconnects once.
+        SecretsPresence.clear(account)
         return nil
     }
 
     static func set(_ value: String, account: KeychainStore.Account) {
         values[account] = value
+        SecretsPresence.mark(account)
         try? KeychainStore.save(value, account: account)
     }
 
     static func clear(_ account: KeychainStore.Account) {
         values.removeValue(forKey: account)
+        SecretsPresence.clear(account)
         KeychainStore.delete(account)
     }
 
     static func clearAll() {
         values.removeAll()
         cursorCredentials = nil
+        SecretsPresence.clearAll()
         for account in KeychainStore.Account.allCases {
             KeychainStore.delete(account)
         }
@@ -51,23 +58,27 @@ enum SessionSecrets {
     static func importCursorFromSafeStorageInteractive() -> CursorLocalAuth.Credentials? {
         if let existing = cursorAuth() { return existing }
         guard !ChromiumCrypto.hasUsedGlobalInteractiveUnlock else { return nil }
-        if let creds = CursorLocalAuth.loadIfAvailable(allowKeychainPrompt: true) {
-            cursorCredentials = creds
-            set(creds.accessToken, account: .cursorBearerOverride)
-            return creds
+        return ForeignKeychainGate.withForeignAccessAllowed {
+            if let creds = CursorLocalAuth.loadIfAvailable(allowKeychainPrompt: true) {
+                cursorCredentials = creds
+                set(creds.accessToken, account: .cursorBearerOverride)
+                return creds
+            }
+            return nil
         }
-        return nil
     }
 
-    /// Advanced: silent-only Safe Storage (still may ACL-prompt on some macOS builds — avoid on default path).
+    /// Advanced: silent-only Safe Storage (still may ACL-prompt — never call from launch/poll).
     static func importCursorFromSafeStorageSilent() -> CursorLocalAuth.Credentials? {
         if let existing = cursorAuth() { return existing }
-        if let creds = CursorLocalAuth.loadIfAvailable(allowKeychainPrompt: false) {
-            cursorCredentials = creds
-            set(creds.accessToken, account: .cursorBearerOverride)
-            return creds
+        return ForeignKeychainGate.withForeignAccessAllowed {
+            if let creds = CursorLocalAuth.loadIfAvailable(allowKeychainPrompt: false) {
+                cursorCredentials = creds
+                set(creds.accessToken, account: .cursorBearerOverride)
+                return creds
+            }
+            return nil
         }
-        return nil
     }
 }
 

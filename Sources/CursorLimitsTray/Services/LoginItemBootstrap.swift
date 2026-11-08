@@ -20,10 +20,13 @@ enum LoginItemBootstrap {
         guard !didApplyThisProcess else { return }
         didApplyThisProcess = true
         offerCopyFromDMGIfNeeded()
-        syncLoginItemWithPreference()
+        // Never block launch with login-item auth. Best-effort, errors swallowed.
+        syncLoginItemWithPreference(quiet: true)
     }
 
-    static func syncLoginItemWithPreference() {
+    static func syncLoginItemWithPreference(quiet: Bool = false) {
+        // Running from a disk image — skip register (often fails / prompts); user copies to Apps first.
+        if Bundle.main.bundlePath.hasPrefix("/Volumes/") { return }
         do {
             if prefersOpenAtLogin {
                 if SMAppService.mainApp.status != .enabled {
@@ -34,6 +37,9 @@ enum LoginItemBootstrap {
             }
         } catch {
             fputs("LoginItemBootstrap: \(error.localizedDescription)\n", stderr)
+            if !quiet {
+                // Caller (Settings save) surfaces the error.
+            }
         }
     }
 
