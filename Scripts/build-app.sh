@@ -28,6 +28,11 @@ cp "$ROOT/Resources/MenuBarGlyph.png" "$RESOURCES/MenuBarGlyph.png"
 # Recognizable provider glyphs for menu bar (template PNGs)
 mkdir -p "$RESOURCES/MenuBarProviders"
 find "$ROOT/Resources/MenuBarProviders" -maxdepth 1 -name 'Provider*.png' -exec cp {} "$RESOURCES/MenuBarProviders/" \;
+# Localizations (macOS preferredLanguages → en / ru)
+for lang in en ru; do
+  mkdir -p "$RESOURCES/${lang}.lproj"
+  cp "$ROOT/Resources/${lang}.lproj/Localizable.strings" "$RESOURCES/${lang}.lproj/"
+done
 chmod +x "$MACOS/CursorLimitsTray"
 
 # Ad-hoc sign so Keychain / local network prompts work more predictably.

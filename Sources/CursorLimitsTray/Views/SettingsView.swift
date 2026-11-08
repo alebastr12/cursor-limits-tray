@@ -18,10 +18,10 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Настройки")
+            Text(L10n.settings)
                 .font(.title2.weight(.semibold))
 
-            Text("Обычный путь — без паролей Keychain / SecurityAgent. Подключение через окно входа.")
+            Text(L10n.tr("settings.blurb"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -30,8 +30,8 @@ struct SettingsView: View {
                     title: "Cursor",
                     ok: poller.cursorConnected,
                     detail: poller.cursorConnected
-                        ? "Токен в Keychain приложения"
-                        : "Нужен токен (см. Advanced) или войдите в Cursor на этом Mac и вставьте cookie"
+                        ? L10n.tr("settings.cursor_ok")
+                        : L10n.tr("settings.cursor_need")
                 )
 
                 connectionRow(
@@ -44,13 +44,12 @@ struct SettingsView: View {
                     Button {
                         ChatGPTConnectController.shared.present { header in
                             poller.saveChatGPTCookie(header)
-                            // Keep Advanced field in sync so Save won't wipe an empty TextEditor.
                             manualChatCookie = header
                             statusIsError = false
-                            statusMessage = "ChatGPT подключён."
+                            statusMessage = L10n.tr("settings.msg_chatgpt_connected")
                         }
                     } label: {
-                        Text("Подключить ChatGPT")
+                        Text(L10n.tr("settings.connect_chatgpt"))
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
@@ -69,10 +68,10 @@ struct SettingsView: View {
                             poller.saveClaudeCookie(header)
                             manualClaudeCookie = header
                             statusIsError = false
-                            statusMessage = "Claude подключён."
+                            statusMessage = L10n.tr("settings.msg_claude_connected")
                         }
                     } label: {
-                        Text("Подключить Claude")
+                        Text(L10n.tr("settings.connect_claude"))
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
@@ -83,79 +82,79 @@ struct SettingsView: View {
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
 
             Form {
-                Section("Опрос") {
+                Section(L10n.tr("settings.polling")) {
                     HStack {
-                        Text("Интервал")
+                        Text(L10n.tr("settings.interval"))
                         Slider(value: $pollSeconds, in: 15...300, step: 15)
-                        Text("\(Int(pollSeconds)) с")
+                        Text(L10n.tr("settings.seconds_short", Int(pollSeconds)))
                             .monospacedDigit()
-                            .frame(width: 40, alignment: .trailing)
+                            .frame(width: 48, alignment: .trailing)
                     }
-                    Toggle("Демо-данные", isOn: $demoMode)
-                    Toggle("Открывать при входе", isOn: $openAtLogin)
+                    Toggle(L10n.tr("settings.demo"), isOn: $demoMode)
+                    Toggle(L10n.tr("settings.open_at_login"), isOn: $openAtLogin)
                 }
 
-                DisclosureGroup("Advanced (может запросить пароль Keychain)", isExpanded: $showAdvanced) {
-                    Text("Не нужно для обычной работы. Импорт из браузера / Cursor Safe Storage может показать диалог пароля.")
+                DisclosureGroup(L10n.tr("settings.advanced"), isExpanded: $showAdvanced) {
+                    Text(L10n.tr("settings.advanced_blurb"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    Button("Взять ChatGPT из браузера (может спросить пароль)") {
+                    Button(L10n.tr("settings.import_chatgpt_browser")) {
                         Task {
                             let ok = await poller.connectChatGPTFromBrowserInteractive()
                             statusIsError = !ok
                             statusMessage = ok
-                                ? "ChatGPT из браузера."
+                                ? L10n.tr("settings.msg_chatgpt_browser_ok")
                                 : (poller.chatGPTNeedsFDA
-                                    ? "Нужен Полный доступ к диску — или «Подключить ChatGPT» выше."
-                                    : "Не вышло. Лучше вход в окне (без пароля).")
+                                    ? L10n.tr("settings.msg_chatgpt_browser_fda")
+                                    : L10n.tr("settings.msg_chatgpt_browser_fail"))
                         }
                     }
                     .frame(maxWidth: .infinity)
 
-                    Button("Взять Claude из Desktop / браузера (может спросить пароль)") {
+                    Button(L10n.tr("settings.import_claude_browser")) {
                         Task {
                             let ok = await poller.connectClaudeFromBrowserInteractive()
                             statusIsError = !ok
                             statusMessage = ok
-                                ? "Claude импортирован."
-                                : "Не вышло. Лучше «Подключить Claude» выше (без пароля)."
+                                ? L10n.tr("settings.msg_claude_browser_ok")
+                                : L10n.tr("settings.msg_claude_browser_fail")
                         }
                     }
                     .frame(maxWidth: .infinity)
 
-                    Button("Cursor Safe Storage (может спросить пароль)") {
+                    Button(L10n.tr("settings.import_cursor_safe")) {
                         Task {
                             let ok = await poller.connectCursorFromLocalInteractive()
                             statusIsError = !ok
                             statusMessage = ok
-                                ? "Cursor из Safe Storage."
-                                : "Нет доступа. Вставьте cookie ниже или войдите в Cursor."
+                                ? L10n.tr("settings.msg_cursor_ok")
+                                : L10n.tr("settings.msg_cursor_fail")
                         }
                     }
                     .frame(maxWidth: .infinity)
 
                     if poller.chatGPTNeedsFDA || poller.claudeNeedsFDA {
-                        Button("Открыть «Полный доступ к диску»") {
+                        Button(L10n.tr("settings.open_fda")) {
                             poller.openFullDiskAccessSettings()
                         }
                     }
 
-                    Text("Вставка сессии вручную (без Keychain unlock)")
+                    Text(L10n.tr("settings.manual_title"))
                         .font(.caption.weight(.semibold))
                         .padding(.top, 6)
 
-                    Text("Cursor cookie `WorkosCursorSessionToken` или bearer")
+                    Text(L10n.tr("settings.cursor_cookie_hint"))
                         .font(.caption)
-                    SecureField("Вставьте значение", text: $manualCursorCookie)
+                    SecureField(L10n.tr("settings.paste_value"), text: $manualCursorCookie)
 
-                    Text("ChatGPT cookie")
+                    Text(L10n.tr("settings.chatgpt_cookie"))
                         .font(.caption)
                     TextEditor(text: $manualChatCookie)
                         .font(.system(.caption, design: .monospaced))
                         .frame(minHeight: 40)
 
-                    Text("Claude `sessionKey=…`")
+                    Text(L10n.tr("settings.claude_cookie"))
                         .font(.caption)
                     TextEditor(text: $manualClaudeCookie)
                         .font(.system(.caption, design: .monospaced))
@@ -172,17 +171,17 @@ struct SettingsView: View {
             }
 
             HStack {
-                Button("Сбросить секреты") {
+                Button(L10n.tr("settings.reset_secrets")) {
                     manualChatCookie = ""
                     manualCursorCookie = ""
                     manualClaudeCookie = ""
                     poller.clearStoredSecrets()
                     statusIsError = false
-                    statusMessage = "Секреты очищены."
+                    statusMessage = L10n.tr("settings.msg_secrets_cleared")
                 }
                 Spacer()
-                Button("Закрыть") { dismiss() }
-                Button("Сохранить") { save() }
+                Button(L10n.close) { dismiss() }
+                Button(L10n.save) { save() }
                     .keyboardShortcut(.defaultAction)
             }
         }
@@ -199,15 +198,15 @@ struct SettingsView: View {
     }
 
     private var chatDetail: String {
-        if poller.chatGPTConnected { return "Подключено (окно входа)" }
-        return "Подключить в окне — без пароля"
+        if poller.chatGPTConnected { return L10n.tr("settings.chatgpt_ok") }
+        return L10n.tr("settings.chatgpt_need")
     }
 
     private var claudeDetail: String {
         if poller.claudeConfigured {
-            return poller.claudeConnected ? "В трее · подключено" : "В трее · нет связи"
+            return poller.claudeConnected ? L10n.tr("settings.claude_ok") : L10n.tr("settings.claude_bad")
         }
-        return "Подключить в окне — без пароля"
+        return L10n.tr("settings.claude_need")
     }
 
     private func connectionRow(title: String, ok: Bool, detail: String) -> some View {
@@ -223,7 +222,7 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Text(ok ? "OK" : "…")
+            Text(ok ? L10n.ok : "…")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(ok ? .green : .secondary)
         }
@@ -233,9 +232,6 @@ struct SettingsView: View {
         AppPreferences.pollIntervalSeconds = pollSeconds
         AppPreferences.forceDemoMode = demoMode
 
-        // Empty Advanced fields must NOT wipe secrets from «Подключить …» —
-        // that was clearing ChatGPT right after a successful login window.
-        // Clearing is only via «Сбросить секреты».
         let c = manualCursorCookie.trimmingCharacters(in: .whitespacesAndNewlines)
         if !c.isEmpty {
             if c.lowercased().hasPrefix("eyj") || (c.count > 80 && !c.contains("=")) {
@@ -259,9 +255,8 @@ struct SettingsView: View {
         LoginItemBootstrap.syncLoginItemWithPreference(quiet: false)
         if openAtLogin, SMAppService.mainApp.status != .enabled,
            !Bundle.main.bundlePath.hasPrefix("/Volumes/") {
-            // register may have failed quietly — surface once in Settings only.
             statusIsError = true
-            statusMessage = "Сохранено. Login item не включился — скопируйте .app в Программы и разрешите в Системных настройках."
+            statusMessage = L10n.tr("settings.msg_login_item_fail")
             poller.restartTimer()
             poller.refreshNow()
             return
@@ -270,7 +265,7 @@ struct SettingsView: View {
         poller.restartTimer()
         poller.refreshNow()
         statusIsError = false
-        statusMessage = "Сохранено."
+        statusMessage = L10n.tr("settings.msg_saved")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { dismiss() }
     }
 }

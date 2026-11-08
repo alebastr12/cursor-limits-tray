@@ -20,7 +20,7 @@ final class StatusItemController: NSObject {
         item.button?.target = self
         item.button?.action = #selector(togglePopover(_:))
         item.button?.imagePosition = .imageOnly
-        item.button?.setAccessibilityTitle("Tray AI limits")
+        item.button?.setAccessibilityTitle(L10n.appName)
         statusItem = item
 
         let pop = NSPopover()
@@ -56,9 +56,9 @@ final class StatusItemController: NSObject {
         guard let button = statusItem?.button else { return }
 
         let a11y = segments.isEmpty
-            ? "Tray AI limits"
-            : "Tray AI limits " + segments.map {
-                "\($0.provider.accessibilityName) \($0.remainingPercent)%"
+            ? L10n.tr("a11y.menubar_empty")
+            : L10n.appName + " " + segments.map {
+                L10n.tr("a11y.menubar_item", $0.provider.accessibilityName, $0.remainingPercent)
             }.joined(separator: ", ")
         button.setAccessibilityTitle(a11y)
 

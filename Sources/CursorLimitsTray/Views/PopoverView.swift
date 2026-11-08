@@ -16,7 +16,7 @@ struct PopoverView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if poller.snapshot.isDemo {
-                        banner("Демо-данные. Выключите демо в Настройках для живых лимитов.", color: .orange)
+                        banner(L10n.tr("popover.demo_banner"), color: .orange)
                     }
 
                     if !anyConnected && !poller.snapshot.isDemo {
@@ -72,13 +72,13 @@ struct PopoverView: View {
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Нет подключённых сервисов")
+            Text(L10n.tr("popover.empty_title"))
                 .font(.headline)
-            Text("В трее и здесь показываются только авторизованные провайдеры. Подключите Cursor, ChatGPT или Claude в Настройках.")
+            Text(L10n.tr("popover.empty_body"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Button("Настройки…") { showSettings = true }
+            Button(L10n.settingsEllipsis) { showSettings = true }
                 .buttonStyle(.borderedProminent)
         }
         .padding(12)
@@ -92,7 +92,7 @@ struct PopoverView: View {
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(Color.accentColor)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Tray AI limits")
+                Text(L10n.appName)
                     .font(.system(.headline, design: .rounded))
                 Text(subtitle)
                     .font(.caption)
@@ -115,12 +115,10 @@ struct PopoverView: View {
             poller.claudeConnected ? poller.snapshot.claude.fetchedAt : nil
         ].compactMap { $0 }
         if let t = dates.max() {
-            let f = RelativeDateTimeFormatter()
-            f.locale = Locale(identifier: "ru_RU")
-            f.unitsStyle = .abbreviated
-            return "Обновлено \(f.localizedString(for: t, relativeTo: Date())) · каждые \(interval) с"
+            let relative = L10n.relativeDateFormatter.localizedString(for: t, relativeTo: Date())
+            return L10n.tr("popover.subtitle_updated", relative, interval)
         }
-        return "Опрос каждые \(interval) с"
+        return L10n.tr("popover.subtitle_poll", interval)
     }
 
     private func banner(_ text: String, color: Color) -> some View {
@@ -134,13 +132,13 @@ struct PopoverView: View {
 
     private var footer: some View {
         HStack {
-            Button("Обновить") { poller.refreshNow() }
+            Button(L10n.refresh) { poller.refreshNow() }
                 .keyboardShortcut("r", modifiers: .command)
             Spacer()
-            Button("Настройки…") { showSettings = true }
-            Button("Выйти") { NSApplication.shared.terminate(nil) }
+            Button(L10n.settingsEllipsis) { showSettings = true }
+            Button(L10n.quit) { NSApplication.shared.terminate(nil) }
                 .keyboardShortcut("q", modifiers: .command)
-                .help("Полностью выйти из приложения. Закрытие окон (✕ / ⌘W) оставляет трей.")
+                .help(L10n.tr("popover.quit_help"))
         }
         .buttonStyle(.borderless)
         .padding(.horizontal, 16)
@@ -179,7 +177,7 @@ private struct ProviderSection: View {
             Circle()
                 .fill(connected ? Color.green : Color.secondary.opacity(0.5))
                 .frame(width: 7, height: 7)
-            Text(connected ? "Подключено" : (snapshot.status.isEmpty ? "Нет" : snapshot.status))
+            Text(connected ? L10n.connected : (snapshot.status.isEmpty ? L10n.noStatus : snapshot.status))
                 .font(.caption)
                 .foregroundStyle(connected ? .green : .secondary)
                 .lineLimit(1)

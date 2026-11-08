@@ -9,7 +9,7 @@ struct CursorLimitsTrayApp: App {
         // Status item + popover are owned by StatusItemController (AppKit).
         // Closing this window must NOT quit — see AppDelegate.
 
-        Window("Tray AI limits", id: "debug-popover") {
+        Window(L10n.appName, id: "debug-popover") {
             PopoverView(poller: appDelegate.poller)
                 .onAppear { appDelegate.poller.start() }
         }
@@ -178,14 +178,18 @@ enum TrayLifecycle {
 
     static func isLoginWindow(_ window: NSWindow) -> Bool {
         let t = window.title
-        return t.contains("Подключение") || t.localizedCaseInsensitiveContains("Connect")
+        return t == L10n.tr("connect.chatgpt.title")
+            || t == L10n.tr("connect.claude.title")
+            || t.localizedCaseInsensitiveContains("Connect")
+            || t.contains("Подключение") // legacy / fallback
     }
 
     static func isSettingsLikeWindow(_ window: NSWindow) -> Bool {
         let t = window.title
-        return t.localizedCaseInsensitiveContains("Settings")
-            || t.contains("Настройки")
+        return t == L10n.settings
+            || t.localizedCaseInsensitiveContains("Settings")
             || t.localizedCaseInsensitiveContains("Preferences")
+            || t.contains("Настройки") // legacy / fallback
     }
 
     /// Visible windows that should keep the app in `.regular` (Settings, debug, login).

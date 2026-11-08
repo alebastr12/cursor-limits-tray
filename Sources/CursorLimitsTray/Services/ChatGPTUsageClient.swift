@@ -72,10 +72,10 @@ enum ChatGPTUsageClient {
 
         var rows: [LimitRow] = []
         if let primary = rate["primary_window"] as? [String: Any] {
-            rows.append(windowRow(id: "cgpt-primary", title: "Окно 5 часов", detail: "Основной лимит", window: primary))
+            rows.append(windowRow(id: "cgpt-primary", title: L10n.tr("limit.window_5h"), detail: L10n.tr("limit.primary"), window: primary))
         }
         if let secondary = rate["secondary_window"] as? [String: Any] {
-            rows.append(windowRow(id: "cgpt-secondary", title: "Неделя", detail: "Вторичный лимит", window: secondary))
+            rows.append(windowRow(id: "cgpt-secondary", title: L10n.tr("limit.week"), detail: L10n.tr("limit.secondary"), window: secondary))
         }
         if let extras = rate["additional_rate_limits"] as? [[String: Any]] {
             for (idx, extra) in extras.enumerated() {
@@ -126,7 +126,7 @@ enum ChatGPTUsageClient {
         let used = doubleValue(window["used_percent"]) ?? doubleValue(window["usedPercent"])
         let remaining: String?
         if let used {
-            remaining = String(format: "%.0f%% осталось", max(0, 100 - used))
+            remaining = L10n.remainingPercent(max(0, 100 - used))
         } else if let rem = doubleValue(window["remaining"]) {
             remaining = String(format: "%.0f remaining", rem)
         } else {
@@ -136,14 +136,10 @@ enum ChatGPTUsageClient {
         let reset: String?
         if let resetAt = window["reset_at"] as? TimeInterval ?? (window["reset_at"] as? NSNumber).map(\.doubleValue) {
             let date = Date(timeIntervalSince1970: resetAt > 10_000_000_000 ? resetAt / 1000 : resetAt)
-            let formatter = RelativeDateTimeFormatter()
-            formatter.unitsStyle = .abbreviated
-            reset = "Resets \(formatter.localizedString(for: date, relativeTo: Date()))"
+            reset = L10n.resetLabel(relativeTo: date)
         } else if let after = doubleValue(window["reset_after_seconds"]) {
             let date = Date().addingTimeInterval(after)
-            let formatter = RelativeDateTimeFormatter()
-            formatter.unitsStyle = .abbreviated
-            reset = "Resets \(formatter.localizedString(for: date, relativeTo: Date()))"
+            reset = L10n.resetLabel(relativeTo: date)
         } else {
             reset = nil
         }

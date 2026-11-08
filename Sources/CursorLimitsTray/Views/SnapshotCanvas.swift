@@ -13,9 +13,13 @@ struct SnapshotCanvas: View {
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(Color.accentColor)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Tray AI limits")
+                    Text(L10n.appName)
                         .font(.system(.headline, design: .rounded))
-                    Text(snapshot.isDemo ? "Демо · каждые 45 с" : "Живые данные · каждые 45 с")
+                    Text(
+                        snapshot.isDemo
+                            ? L10n.tr("popover.demo_every", 45)
+                            : L10n.tr("popover.live_every", 45)
+                    )
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -28,7 +32,7 @@ struct SnapshotCanvas: View {
 
             VStack(alignment: .leading, spacing: 16) {
                 if snapshot.isDemo {
-                    Text("Демо-данные.")
+                    Text(L10n.tr("settings.demo") + ".")
                         .font(.caption)
                         .foregroundStyle(.orange)
                         .padding(10)
@@ -40,14 +44,14 @@ struct SnapshotCanvas: View {
                     snapshot.chatGPT,
                     connected: !snapshot.chatGPT.rows.isEmpty,
                     showConnect: showConnectChatGPT && snapshot.chatGPT.rows.isEmpty,
-                    connectLabel: "Подключить ChatGPT"
+                    connectLabel: L10n.tr("settings.connect_chatgpt")
                 )
                 if snapshot.isDemo || !snapshot.claude.rows.isEmpty {
                     canvasProvider(
                         snapshot.claude,
                         connected: !snapshot.claude.rows.isEmpty,
                         showConnect: false,
-                        connectLabel: "Подключить Claude"
+                        connectLabel: L10n.tr("settings.connect_claude")
                     )
                 }
             }
@@ -56,10 +60,10 @@ struct SnapshotCanvas: View {
             Spacer(minLength: 0)
             Divider().opacity(0.35)
             HStack {
-                Text("Обновить").foregroundStyle(.secondary)
+                Text(L10n.refresh).foregroundStyle(.secondary)
                 Spacer()
-                Text("Настройки…").foregroundStyle(.secondary)
-                Text("Выйти").foregroundStyle(.secondary)
+                Text(L10n.settingsEllipsis).foregroundStyle(.secondary)
+                Text(L10n.quit).foregroundStyle(.secondary)
             }
             .font(.body)
             .padding(.horizontal, 16)
@@ -82,16 +86,17 @@ struct SnapshotCanvas: View {
         _ snap: ProviderSnapshot,
         connected: Bool,
         showConnect: Bool = false,
-        connectLabel: String = "Подключить"
+        connectLabel: String? = nil
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let connectLabel = connectLabel ?? L10n.tr("common.connect")
+        return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(snap.name)
                     .font(.system(.title3, design: .rounded).weight(.semibold))
                 Spacer()
                 HStack(spacing: 4) {
                     Circle().fill(connected ? Color.green : Color.secondary.opacity(0.5)).frame(width: 7, height: 7)
-                    Text(connected ? "Подключено" : "Не подключено")
+                    Text(connected ? L10n.connected : L10n.notConnected)
                         .font(.caption)
                         .foregroundStyle(connected ? .green : .secondary)
                 }
@@ -136,15 +141,27 @@ struct SettingsSnapshotCanvas: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Настройки")
+            Text(L10n.settings)
                 .font(.title2.weight(.semibold))
 
             VStack(alignment: .leading, spacing: 12) {
-                statusLine("Cursor", ok: cursorOK, detail: cursorOK ? "Автоматически с этого Mac" : "Войдите в Cursor")
-                statusLine("ChatGPT", ok: chatOK, detail: chatOK ? "Подключено" : "Один вход в окне приложения")
-                statusLine("Claude", ok: claudeOK, detail: claudeOK ? "Подключено" : "Claude Desktop или вход на claude.ai")
+                statusLine(
+                    "Cursor",
+                    ok: cursorOK,
+                    detail: cursorOK ? L10n.tr("settings.snapshot_cursor_ok") : L10n.tr("settings.snapshot_cursor_need")
+                )
+                statusLine(
+                    "ChatGPT",
+                    ok: chatOK,
+                    detail: chatOK ? L10n.connected : L10n.tr("settings.snapshot_chatgpt_need")
+                )
+                statusLine(
+                    "Claude",
+                    ok: claudeOK,
+                    detail: claudeOK ? L10n.connected : L10n.tr("settings.snapshot_claude_need")
+                )
                 if !chatOK {
-                    Text("Подключить ChatGPT")
+                    Text(L10n.tr("settings.connect_chatgpt"))
                         .font(.body.weight(.semibold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
@@ -152,7 +169,7 @@ struct SettingsSnapshotCanvas: View {
                         .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 8))
                 }
                 if !claudeOK {
-                    Text("Подключить Claude")
+                    Text(L10n.tr("settings.connect_claude"))
                         .font(.body.weight(.semibold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
@@ -163,16 +180,16 @@ struct SettingsSnapshotCanvas: View {
             .padding(14)
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
 
-            Text("Опрос · 45 с · Открывать при входе")
+            Text(L10n.tr("settings.snapshot_poll_line"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
             Spacer()
             HStack {
-                Text("Сбросить секреты").foregroundStyle(.secondary)
+                Text(L10n.tr("settings.reset_secrets")).foregroundStyle(.secondary)
                 Spacer()
-                Text("Закрыть").foregroundStyle(.secondary)
-                Text("Сохранить").fontWeight(.semibold)
+                Text(L10n.close).foregroundStyle(.secondary)
+                Text(L10n.save).fontWeight(.semibold)
             }
         }
         .padding(20)
@@ -188,7 +205,7 @@ struct SettingsSnapshotCanvas: View {
                 Text(detail).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Text(ok ? "OK" : "…")
+            Text(ok ? L10n.ok : "…")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(ok ? .green : .secondary)
         }

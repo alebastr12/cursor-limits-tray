@@ -109,10 +109,10 @@ enum CursorUsageClient {
             rows.append(
                 LimitRow(
                     id: "cursor-included",
-                    title: isUnified ? "Недельный пул" : "Включённое использование",
-                    detail: (period["displayMessage"] as? String) ?? (sand["displayMessage"] as? String) ?? "Лимит плана",
+                    title: isUnified ? L10n.tr("limit.weekly_pool") : L10n.tr("limit.included_usage"),
+                    detail: (period["displayMessage"] as? String) ?? (sand["displayMessage"] as? String) ?? L10n.tr("limit.plan_limit"),
                     percentUsed: totalPercent,
-                    remainingLabel: String(format: "%.0f%% осталось", max(0, 100 - totalPercent)),
+                    remainingLabel: L10n.remainingPercent(max(0, 100 - totalPercent)),
                     resetLabel: resetLabel(
                         fromISO: sand["nextResetTimestampUtc"] as? String,
                         fromMillis: int64Value(planInfo["includedUsageResetsAt"]) ?? int64Value(period["billingCycleEnd"])
@@ -128,7 +128,7 @@ enum CursorUsageClient {
                     title: "Cursor models",
                     detail: "Auto / first-party pool",
                     percentUsed: auto,
-                    remainingLabel: String(format: "%.0f%% осталось", max(0, 100 - auto)),
+                    remainingLabel: L10n.remainingPercent(max(0, 100 - auto)),
                     resetLabel: nil
                 )
             )
@@ -140,7 +140,7 @@ enum CursorUsageClient {
                     title: "Other models",
                     detail: "Third-party / API pool",
                     percentUsed: api,
-                    remainingLabel: String(format: "%.0f%% осталось", max(0, 100 - api)),
+                    remainingLabel: L10n.remainingPercent(max(0, 100 - api)),
                     resetLabel: nil
                 )
             )
@@ -174,7 +174,7 @@ enum CursorUsageClient {
                     title: "Plan usage",
                     detail: (json["autoModelSelectedDisplayMessage"] as? String) ?? "Included allowance",
                     percentUsed: totalPercent,
-                    remainingLabel: String(format: "%.0f%% осталось", max(0, 100 - totalPercent)),
+                    remainingLabel: L10n.remainingPercent(max(0, 100 - totalPercent)),
                     resetLabel: resetLabel(fromISO: cycleEnd, fromMillis: nil)
                 )
             )
@@ -202,19 +202,17 @@ enum CursorUsageClient {
     }
 
     private static func resetLabel(fromISO iso: String?, fromMillis millis: Int64?) -> String? {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
         if let iso,
            let date = ISO8601DateFormatter().date(from: iso)
             ?? ISO8601DateFormatter.fullFractional.date(from: iso) {
-            return "Resets \(formatter.localizedString(for: date, relativeTo: Date()))"
+            return L10n.resetLabel(relativeTo: date)
         }
         if let millis {
             // Cursor sometimes returns ms as stringified numbers that are actually epoch-ms-like ids;
             // only treat as epoch if looks like a real timestamp (~1e12..1e13).
             if millis > 1_000_000_000_000, millis < 10_000_000_000_000 {
                 let date = Date(timeIntervalSince1970: TimeInterval(millis) / 1000)
-                return "Resets \(formatter.localizedString(for: date, relativeTo: Date()))"
+                return L10n.resetLabel(relativeTo: date)
             }
         }
         return nil

@@ -33,9 +33,9 @@ struct MenuBarLabel: View {
         }
         .accessibilityLabel(
             poller.menuBarSegments.isEmpty
-                ? "Tray AI limits"
+                ? L10n.tr("a11y.menubar_empty")
                 : poller.menuBarSegments.map {
-                    "\($0.provider.accessibilityName) \($0.remainingPercent)%"
+                    L10n.tr("a11y.menubar_item", $0.provider.accessibilityName, $0.remainingPercent)
                 }.joined(separator: ", ")
         )
     }

@@ -173,7 +173,7 @@ final class UsagePoller: ObservableObject {
     func connectCursorFromLocalInteractive() async -> Bool {
         if let creds = SessionSecrets.importCursorFromSafeStorageInteractive() {
             cursorConnected = true
-            connectionNote = "Cursor: локальный токен"
+            connectionNote = L10n.tr("poller.note_cursor_local")
             _ = creds
             refreshNow()
             return true
@@ -186,7 +186,7 @@ final class UsagePoller: ObservableObject {
         // Optimistic UI: keep connected while refresh fetches rows.
         chatGPTConnected = SessionSecrets.get(.chatGPTSessionCookie) != nil
         chatGPTNeedsFDA = false
-        connectionNote = "ChatGPT подключён"
+        connectionNote = L10n.tr("poller.note_chatgpt")
         refreshNow()
     }
 
@@ -196,7 +196,7 @@ final class UsagePoller: ObservableObject {
             || SessionSecrets.get(.claudeBearerOverride) != nil
         claudeConnected = claudeConfigured
         claudeNeedsFDA = false
-        connectionNote = "Claude подключён"
+        connectionNote = L10n.tr("poller.note_claude")
         refreshNow()
     }
 
@@ -241,13 +241,13 @@ final class UsagePoller: ObservableObject {
         // Cursor — memory / app Keychain only on poll (Safe Storage already done in start()).
         do {
             next.cursor = try await CursorUsageClient.fetch(auth: resolveCursorAuth())
-            cursorConnected = next.cursor.error == nil && (!next.cursor.rows.isEmpty || next.cursor.status.contains("Подключено"))
-            if cursorConnected && !next.cursor.status.contains("Подключено") {
+            cursorConnected = next.cursor.error == nil && !next.cursor.rows.isEmpty
+            if cursorConnected {
                 next.cursor.status = connectedStatus(base: next.cursor.status)
             }
         } catch {
             cursorConnected = false
-            next.cursor = ProviderSnapshot(name: "Cursor", status: "Нет связи", rows: next.cursor.rows, fetchedAt: next.cursor.fetchedAt, error: humanize(error))
+            next.cursor = ProviderSnapshot(name: "Cursor", status: L10n.noConnection, rows: next.cursor.rows, fetchedAt: next.cursor.fetchedAt, error: humanize(error))
         }
 
         // ChatGPT — only if authorized (app Keychain secrets). Never show unauthorized.
@@ -261,7 +261,7 @@ final class UsagePoller: ObservableObject {
                 chatGPTConnected = next.chatGPT.error == nil && !next.chatGPT.rows.isEmpty
                 if chatGPTConnected {
                     let src = chatGPTAutoSource.map { " · \($0)" } ?? ""
-                    next.chatGPT.status = next.chatGPT.status.contains("Подключено") ? next.chatGPT.status : "Подключено\(src)"
+                    next.chatGPT.status = L10n.connectedWithDetail(src.isEmpty ? next.chatGPT.status : "\(next.chatGPT.status)\(src)")
                 } else if !next.chatGPT.rows.isEmpty {
                     // Keep showing last rows if status/error odd but data present.
                     chatGPTConnected = true
@@ -275,7 +275,7 @@ final class UsagePoller: ObservableObject {
                     chatGPTConnected = false
                     next.chatGPT = ProviderSnapshot(
                         name: "ChatGPT",
-                        status: "Нет связи",
+                        status: L10n.noConnection,
                         rows: [],
                         fetchedAt: next.chatGPT.fetchedAt,
                         error: humanizeChatGPT(error)
@@ -293,13 +293,13 @@ final class UsagePoller: ObservableObject {
                     sessionCookie: SessionSecrets.get(.claudeSessionCookie),
                     bearerToken: SessionSecrets.get(.claudeBearerOverride)
                 ))
-                claudeConnected = next.claude.error == nil && (next.claude.status.contains("Подключено") || !next.claude.rows.isEmpty)
-                if claudeConnected && next.claude.status.isEmpty {
-                    next.claude.status = "Подключено"
+                claudeConnected = next.claude.error == nil && !next.claude.rows.isEmpty
+                if claudeConnected {
+                    next.claude.status = connectedStatus(base: next.claude.status)
                 }
             } catch {
                 claudeConnected = false
-                next.claude = ProviderSnapshot(name: "Claude", status: "", rows: [], fetchedAt: next.claude.fetchedAt, error: nil)
+                next.claude = ProviderSnapshot(name: "Claude", status: L10n.noConnection, rows: [], fetchedAt: next.claude.fetchedAt, error: nil)
             }
         } else {
             claudeConnected = false
@@ -385,9 +385,7 @@ final class UsagePoller: ObservableObject {
     }
 
     private func connectedStatus(base: String) -> String {
-        if base.contains("Подключено") { return base }
-        if base.isEmpty { return "Подключено" }
-        return "Подключено · \(base)"
+        L10n.connectedWithDetail(base)
     }
 
     private func humanize(_ error: Error) -> String {
@@ -396,14 +394,14 @@ final class UsagePoller: ObservableObject {
 
     private func humanizeChatGPT(_ error: Error) -> String {
         if let u = error as? UsageError, case .notConfigured = u {
-            return "Нажмите «Подключить ChatGPT»."
+            return L10n.tr("error.connect_chatgpt")
         }
         return humanize(error)
     }
 
     private func humanizeClaude(_ error: Error) -> String {
         if let u = error as? UsageError, case .notConfigured = u {
-            return "Нажмите «Подключить Claude» — или откройте приложение Claude на этом Mac."
+            return L10n.tr("error.connect_claude")
         }
         return humanize(error)
     }

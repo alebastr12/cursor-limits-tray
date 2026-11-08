@@ -80,7 +80,7 @@ final class ClaudeConnectController: NSObject, WKNavigationDelegate, WKUIDelegat
             backing: .buffered,
             defer: false
         )
-        window.title = "Подключение Claude"
+        window.title = L10n.tr("connect.claude.title")
         window.isReleasedWhenClosed = false
         window.level = .normal
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
@@ -91,7 +91,7 @@ final class ClaudeConnectController: NSObject, WKNavigationDelegate, WKUIDelegat
         let root = NSView(frame: .zero)
         root.translatesAutoresizingMaskIntoConstraints = false
 
-        let header = NSTextField(labelWithString: "Войдите в Claude. После входа нажмите «проверить» или дождитесь авто-сохранения.")
+        let header = NSTextField(labelWithString: L10n.tr("connect.claude.header"))
         header.font = .systemFont(ofSize: 12)
         header.textColor = .secondaryLabelColor
         header.translatesAutoresizingMaskIntoConstraints = false
@@ -106,10 +106,10 @@ final class ClaudeConnectController: NSObject, WKNavigationDelegate, WKUIDelegat
         web.translatesAutoresizingMaskIntoConstraints = false
         webView = web
 
-        let check = NSButton(title: "Я уже вошёл — проверить", target: self, action: #selector(recheck))
+        let check = NSButton(title: L10n.tr("connect.check"), target: self, action: #selector(recheck))
         check.bezelStyle = .rounded
         check.translatesAutoresizingMaskIntoConstraints = false
-        let closeBtn = NSButton(title: "Закрыть", target: self, action: #selector(closeClicked))
+        let closeBtn = NSButton(title: L10n.close, target: self, action: #selector(closeClicked))
         closeBtn.bezelStyle = .rounded
         closeBtn.translatesAutoresizingMaskIntoConstraints = false
 
@@ -138,7 +138,7 @@ final class ClaudeConnectController: NSObject, WKNavigationDelegate, WKUIDelegat
     }
 
     @objc private func recheck() {
-        setStatus("Проверяю сессию…")
+        setStatus(L10n.tr("connect.checking"))
         inspectCookies()
     }
 
@@ -185,11 +185,11 @@ final class ClaudeConnectController: NSObject, WKNavigationDelegate, WKUIDelegat
                 guard let session = relevant.first(where: { $0.name == "sessionKey" })?.value
                         ?? relevant.first?.value,
                       session.hasPrefix("sk-ant") else {
-                    self.setStatus("Сессии пока нет — войдите в Claude в окне выше.")
+                    self.setStatus(L10n.tr("connect.claude.no_session"))
                     return
                 }
                 self.didEmit = true
-                self.setStatus("Сессия найдена, сохраняю…")
+                self.setStatus(L10n.tr("connect.session_saving"))
                 let header = "sessionKey=\(session)"
                 let callback = self.onConnected
                 // Callback before close so Settings can update state while still .regular.

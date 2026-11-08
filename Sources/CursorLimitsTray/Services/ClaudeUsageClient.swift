@@ -14,7 +14,7 @@ enum ClaudeUsageClient {
         }
         let cookie = normalizeCookie(auth.sessionCookie)
         guard let cookie, !cookie.isEmpty else {
-            throw UsageError.notConfigured("Нажмите «Подключить Claude» или войдите в приложение Claude на этом Mac.")
+            throw UsageError.notConfigured(L10n.tr("error.connect_claude_or_app"))
         }
         return try await fetchViaWeb(cookie: cookie)
     }
@@ -45,10 +45,10 @@ enum ClaudeUsageClient {
         } else if let dict = orgs as? [String: Any], let arr = dict["data"] as? [[String: Any]] {
             orgList = arr
         } else {
-            throw UsageError.auth("Не удалось прочитать организации Claude.")
+            throw UsageError.auth(L10n.tr("error.claude_orgs_read"))
         }
         guard !orgList.isEmpty else {
-            throw UsageError.auth("Нет организаций Claude — войдите на claude.ai.")
+            throw UsageError.auth(L10n.tr("error.claude_no_orgs"))
         }
 
         // Prefer an org that actually reports usage windows.
@@ -107,25 +107,25 @@ enum ClaudeUsageClient {
         var rows: [LimitRow] = []
 
         if let five = json["five_hour"] as? [String: Any] {
-            rows.append(windowRow(id: "claude-5h", title: "Окно 5 часов", detail: "Session rate limit", window: five))
+            rows.append(windowRow(id: "claude-5h", title: L10n.tr("limit.window_5h"), detail: L10n.tr("limit.session_rate"), window: five))
         }
         if let week = json["seven_day"] as? [String: Any] {
-            rows.append(windowRow(id: "claude-7d", title: "Неделя", detail: "Weekly rate limit", window: week))
+            rows.append(windowRow(id: "claude-7d", title: L10n.tr("limit.week"), detail: L10n.tr("limit.weekly_rate"), window: week))
         }
         if let opus = json["seven_day_opus"] as? [String: Any], opus["utilization"] != nil {
-            rows.append(windowRow(id: "claude-opus", title: "Opus (неделя)", detail: "Model-scoped weekly", window: opus))
+            rows.append(windowRow(id: "claude-opus", title: L10n.tr("limit.opus_week"), detail: "Model-scoped weekly", window: opus))
         }
         if let sonnet = json["seven_day_sonnet"] as? [String: Any], sonnet["utilization"] != nil {
-            rows.append(windowRow(id: "claude-sonnet", title: "Sonnet (неделя)", detail: "Model-scoped weekly", window: sonnet))
+            rows.append(windowRow(id: "claude-sonnet", title: L10n.tr("limit.sonnet_week"), detail: "Model-scoped weekly", window: sonnet))
         }
         if let limits = json["limits"] as? [[String: Any]] {
             for (idx, lim) in limits.enumerated() {
                 let kind = (lim["kind"] as? String) ?? "limit-\(idx)"
                 let title: String
                 switch kind {
-                case "session": title = "Сессия"
-                case "weekly_all": title = "Неделя"
-                case "weekly_scoped": title = "Неделя (модель)"
+                case "session": title = L10n.tr("limit.session")
+                case "weekly_all": title = L10n.tr("limit.week")
+                case "weekly_scoped": title = L10n.tr("limit.week_model")
                 default: title = kind
                 }
                 if let pct = doubleValue(lim["percent"]) ?? doubleValue(lim["utilization"]) {
@@ -135,7 +135,7 @@ enum ClaudeUsageClient {
                             title: title,
                             detail: kind,
                             percentUsed: pct,
-                            remainingLabel: String(format: "%.0f%% осталось", max(0, 100 - pct)),
+                            remainingLabel: L10n.remainingPercent(max(0, 100 - pct)),
                             resetLabel: resetLabel(iso: lim["resets_at"] as? String)
                         )
                     )
@@ -146,12 +146,12 @@ enum ClaudeUsageClient {
         if rows.isEmpty {
             return ProviderSnapshot(
                 name: "Claude",
-                status: "Подключено · \(planLabel)",
+                status: L10n.connectedWithDetail(planLabel),
                 rows: [
                     LimitRow(
                         id: "claude-empty",
-                        title: "Лимиты 5ч / неделя",
-                        detail: "API не вернул проценты (часто на Free). Нужен Pro/Max или свежая активность.",
+                        title: L10n.tr("limit.five_week_combo"),
+                        detail: L10n.tr("limit.claude_empty_detail"),
                         percentUsed: nil,
                         remainingLabel: nil,
                         resetLabel: nil
@@ -173,7 +173,7 @@ enum ClaudeUsageClient {
 
     private static func windowRow(id: String, title: String, detail: String, window: [String: Any]) -> LimitRow {
         let used = doubleValue(window["utilization"])
-        let remaining = used.map { String(format: "%.0f%% осталось", max(0, 100 - $0)) }
+        let remaining = used.map { L10n.remainingPercent(max(0, 100 - $0)) }
         return LimitRow(
             id: id,
             title: title,
@@ -194,10 +194,7 @@ enum ClaudeUsageClient {
             date = f.date(from: iso)
         }
         guard let date else { return nil }
-        let rel = RelativeDateTimeFormatter()
-        rel.locale = Locale(identifier: "ru_RU")
-        rel.unitsStyle = .abbreviated
-        return "Сброс \(rel.localizedString(for: date, relativeTo: Date()))"
+        return L10n.resetLabel(relativeTo: date)
     }
 
     private static func humanPlan(_ raw: String) -> String {

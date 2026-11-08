@@ -82,7 +82,7 @@ final class ChatGPTConnectController: NSObject, WKNavigationDelegate, WKUIDelega
             backing: .buffered,
             defer: false
         )
-        window.title = "Подключение ChatGPT"
+        window.title = L10n.tr("connect.chatgpt.title")
         window.isReleasedWhenClosed = false
         window.level = .normal
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
@@ -90,7 +90,7 @@ final class ChatGPTConnectController: NSObject, WKNavigationDelegate, WKUIDelega
         window.delegate = self
         window.center()
 
-        let header = NSTextField(labelWithString: "Войдите в ChatGPT. После входа нажмите «проверить» или дождитесь авто-сохранения.")
+        let header = NSTextField(labelWithString: L10n.tr("connect.chatgpt.header"))
         header.font = .systemFont(ofSize: 12)
         header.textColor = .secondaryLabelColor
         header.translatesAutoresizingMaskIntoConstraints = false
@@ -105,11 +105,11 @@ final class ChatGPTConnectController: NSObject, WKNavigationDelegate, WKUIDelega
         web.translatesAutoresizingMaskIntoConstraints = false
         webView = web
 
-        let checkButton = NSButton(title: "Я уже вошёл — проверить", target: self, action: #selector(recheck))
+        let checkButton = NSButton(title: L10n.tr("connect.check"), target: self, action: #selector(recheck))
         checkButton.bezelStyle = .rounded
         checkButton.translatesAutoresizingMaskIntoConstraints = false
 
-        let closeButton = NSButton(title: "Закрыть", target: self, action: #selector(closeClicked))
+        let closeButton = NSButton(title: L10n.close, target: self, action: #selector(closeClicked))
         closeButton.bezelStyle = .rounded
         closeButton.translatesAutoresizingMaskIntoConstraints = false
 
@@ -142,7 +142,7 @@ final class ChatGPTConnectController: NSObject, WKNavigationDelegate, WKUIDelega
     }
 
     @objc private func recheck() {
-        setStatus("Проверяю сессию…")
+        setStatus(L10n.tr("connect.checking"))
         inspectCookies()
     }
 
@@ -243,7 +243,7 @@ final class ChatGPTConnectController: NSObject, WKNavigationDelegate, WKUIDelega
         """
         webView.evaluateJavaScript(js) { [weak self] result, _ in
             if let s = result as? String, s.hasPrefix("clicked") {
-                self?.setStatus("Cookie-баннер принят автоматически. Войдите в аккаунт…")
+                self?.setStatus(L10n.tr("connect.cookie_accepted"))
             }
         }
     }
@@ -257,7 +257,7 @@ final class ChatGPTConnectController: NSObject, WKNavigationDelegate, WKUIDelega
                     $0.domain.contains("chatgpt.com") && $0.name.contains("next-auth.session-token")
                 }
                 guard !relevant.isEmpty else {
-                    self.setStatus("Сессии пока нет — примите cookies (если остались) и войдите.")
+                    self.setStatus(L10n.tr("connect.chatgpt.no_session"))
                     return
                 }
 
@@ -273,7 +273,7 @@ final class ChatGPTConnectController: NSObject, WKNavigationDelegate, WKUIDelega
                 }
 
                 self.didEmit = true
-                self.setStatus("Сессия найдена, сохраняю…")
+                self.setStatus(L10n.tr("connect.session_saving"))
                 let callback = self.onConnected
                 callback?(header)
                 self.close()

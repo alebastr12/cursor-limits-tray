@@ -50,11 +50,11 @@ enum LoginItemBootstrap {
         UserDefaults.standard.set(true, forKey: dmgPromptKey)
 
         let alert = NSAlert()
-        alert.messageText = "Установить в Программы?"
-        alert.informativeText = "Запуск с DMG. Скопируйте в «Программы» — так надёжнее работает «Открывать при входе» (без пароля администратора при обычной установке)."
+        alert.messageText = L10n.tr("install.copy_title")
+        alert.informativeText = L10n.tr("install.copy_body")
         alert.alertStyle = .informational
-        alert.addButton(withTitle: "Скопировать в Программы")
-        alert.addButton(withTitle: "Не сейчас")
+        alert.addButton(withTitle: L10n.tr("install.copy_button"))
+        alert.addButton(withTitle: L10n.tr("common.not_now"))
 
         TrayLifecycle.beginShowingWindow()
         NSApp.activate(ignoringOtherApps: true)
@@ -80,8 +80,8 @@ enum LoginItemBootstrap {
             }
         } catch {
             let alert = NSAlert()
-            alert.messageText = "Не удалось скопировать без пароля"
-            alert.informativeText = "Перетащите TrayAILimits.app в «Программы» вручную.\n\(error.localizedDescription)"
+            alert.messageText = L10n.tr("install.copy_fail_title")
+            alert.informativeText = L10n.tr("install.copy_fail_body", error.localizedDescription)
             alert.runModal()
         }
     }

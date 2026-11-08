@@ -30,11 +30,8 @@ struct UsageSnapshot: Equatable {
         isDemo: false
     )
 
-    static let demo: UsageSnapshot = {
+    static var demo: UsageSnapshot {
         let now = Date()
-        let formatter = RelativeDateTimeFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
-        formatter.unitsStyle = .abbreviated
         let weeklyReset = now.addingTimeInterval(60 * 60 * 36)
         let fiveHourReset = now.addingTimeInterval(60 * 95)
         return UsageSnapshot(
@@ -42,7 +39,14 @@ struct UsageSnapshot: Equatable {
                 name: "Cursor",
                 status: "Premium · demo",
                 rows: [
-                    LimitRow(id: "c1", title: "Недельный пул", detail: "Cursor / Grok", percentUsed: 21, remainingLabel: "79% осталось", resetLabel: "Сброс \(formatter.localizedString(for: weeklyReset, relativeTo: now))")
+                    LimitRow(
+                        id: "c1",
+                        title: L10n.tr("limit.weekly_pool"),
+                        detail: "Cursor / Grok",
+                        percentUsed: 21,
+                        remainingLabel: L10n.remainingPercent(79),
+                        resetLabel: L10n.resetLabel(relativeTo: weeklyReset, now: now)
+                    )
                 ],
                 fetchedAt: now, error: nil
             ),
@@ -50,8 +54,22 @@ struct UsageSnapshot: Equatable {
                 name: "ChatGPT",
                 status: "Plus · demo",
                 rows: [
-                    LimitRow(id: "g1", title: "Окно 5 часов", detail: "Primary", percentUsed: 33, remainingLabel: "67% осталось", resetLabel: "Сброс \(formatter.localizedString(for: fiveHourReset, relativeTo: now))"),
-                    LimitRow(id: "g2", title: "Неделя", detail: "Secondary", percentUsed: 12, remainingLabel: "88% осталось", resetLabel: nil)
+                    LimitRow(
+                        id: "g1",
+                        title: L10n.tr("limit.window_5h"),
+                        detail: "Primary",
+                        percentUsed: 33,
+                        remainingLabel: L10n.remainingPercent(67),
+                        resetLabel: L10n.resetLabel(relativeTo: fiveHourReset, now: now)
+                    ),
+                    LimitRow(
+                        id: "g2",
+                        title: L10n.tr("limit.week"),
+                        detail: "Secondary",
+                        percentUsed: 12,
+                        remainingLabel: L10n.remainingPercent(88),
+                        resetLabel: nil
+                    )
                 ],
                 fetchedAt: now, error: nil
             ),
@@ -59,14 +77,28 @@ struct UsageSnapshot: Equatable {
                 name: "Claude",
                 status: "Pro · demo",
                 rows: [
-                    LimitRow(id: "a1", title: "Окно 5 часов", detail: "Session", percentUsed: 40, remainingLabel: "60% осталось", resetLabel: "Сброс \(formatter.localizedString(for: fiveHourReset, relativeTo: now))"),
-                    LimitRow(id: "a2", title: "Неделя", detail: "Weekly", percentUsed: 25, remainingLabel: "75% осталось", resetLabel: nil)
+                    LimitRow(
+                        id: "a1",
+                        title: L10n.tr("limit.window_5h"),
+                        detail: "Session",
+                        percentUsed: 40,
+                        remainingLabel: L10n.remainingPercent(60),
+                        resetLabel: L10n.resetLabel(relativeTo: fiveHourReset, now: now)
+                    ),
+                    LimitRow(
+                        id: "a2",
+                        title: L10n.tr("limit.week"),
+                        detail: "Weekly",
+                        percentUsed: 25,
+                        remainingLabel: L10n.remainingPercent(75),
+                        resetLabel: nil
+                    )
                 ],
                 fetchedAt: now, error: nil
             ),
             isDemo: true
         )
-    }()
+    }
 }
 
 enum AppPreferences {
