@@ -1,71 +1,97 @@
 import AppKit
 import WebKit
 
-/// Floating login panel for claude.ai (same pattern as ChatGPT — survives tray popover dismiss).
+/// Standalone login window for claude.ai (survives tray popover dismiss).
+/// Uses a normal `NSWindow` (not floating NSPanel) so Settings stays clickable after close.
 @MainActor
 final class ClaudeConnectController: NSObject, WKNavigationDelegate, WKUIDelegate, NSWindowDelegate {
     static let shared = ClaudeConnectController()
 
-    private var panel: NSPanel?
+    private var window: NSWindow?
     private var webView: WKWebView?
     private var statusLabel: NSTextField?
     private var onConnected: ((String) -> Void)?
     private var didEmit = false
-    private var previousActivationPolicy: NSApplication.ActivationPolicy?
+    private var sessionStarted = false
+    private var isClosing = false
 
     func present(onConnected: @escaping (String) -> Void) {
         self.onConnected = onConnected
         didEmit = false
-        if previousActivationPolicy == nil {
-            previousActivationPolicy = NSApp.activationPolicy()
-            TrayLifecycle.beginShowingWindow()
+        isClosing = false
+
+        if !sessionStarted {
+            sessionStarted = true
+            TrayLifecycle.beginSessionWindow()
         }
-        if let panel, panel.isVisible {
-            panel.makeKeyAndOrderFront(nil)
+
+        if let window, window.isVisible {
+            window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
-        let panel = makePanel()
-        self.panel = panel
-        panel.makeKeyAndOrderFront(nil)
+
+        let window = makeWindow()
+        self.window = window
+        window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self, weak panel] in
-            panel?.makeKeyAndOrderFront(nil)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self, weak window] in
+            guard let self, !self.isClosing else { return }
+            window?.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
-            self?.webView?.window?.makeFirstResponder(self?.webView)
+            self.webView?.window?.makeFirstResponder(self.webView)
         }
     }
 
     func close() {
-        panel?.orderOut(nil)
-        panel = nil
+        finishClosing(orderOut: true)
+    }
+
+    private func finishClosing(orderOut: Bool) {
+        guard !isClosing else { return }
+        isClosing = true
+
+        let hadSession = sessionStarted
+        sessionStarted = false
+
+        if orderOut {
+            window?.delegate = nil
+            window?.orderOut(nil)
+            window?.close()
+        }
+        window = nil
         webView = nil
         statusLabel = nil
         onConnected = nil
-        previousActivationPolicy = nil
-        TrayLifecycle.returnToTrayOnlyIfNoUserWindows()
+
+        if hadSession {
+            TrayLifecycle.endSessionWindow()
+        } else {
+            TrayLifecycle.restoreKeyToBestUserWindow()
+            TrayLifecycle.returnToTrayOnlyIfNoUserWindows()
+        }
     }
 
-    private func makePanel() -> NSPanel {
-        let panel = NSPanel(
+    private func makeWindow() -> NSWindow {
+        let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 720, height: 720),
-            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
-        panel.title = "Подключение Claude"
-        panel.isFloatingPanel = true
-        panel.level = .floating
-        panel.hidesOnDeactivate = false
-        panel.isReleasedWhenClosed = false
-        panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
-        panel.delegate = self
-        panel.center()
+        window.title = "Подключение Claude"
+        window.isReleasedWhenClosed = false
+        window.level = .normal
+        window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        window.minSize = NSSize(width: 560, height: 520)
+        window.delegate = self
+        window.center()
 
         let root = NSView(frame: .zero)
-        root.autoresizingMask = [.width, .height]
+        root.translatesAutoresizingMaskIntoConstraints = false
 
-        let header = NSTextField(labelWithString: "Войдите в Claude. Окно не закроется при клике снаружи.")
+        let header = NSTextField(labelWithString: "Войдите в Claude. После входа нажмите «проверить» или дождитесь авто-сохранения.")
         header.font = .systemFont(ofSize: 12)
         header.textColor = .secondaryLabelColor
         header.translatesAutoresizingMaskIntoConstraints = false
@@ -73,6 +99,7 @@ final class ClaudeConnectController: NSObject, WKNavigationDelegate, WKUIDelegat
 
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
+        config.preferences.javaScriptCanOpenWindowsAutomatically = true
         let web = WKWebView(frame: .zero, configuration: config)
         web.navigationDelegate = self
         web.uiDelegate = self
@@ -86,27 +113,28 @@ final class ClaudeConnectController: NSObject, WKNavigationDelegate, WKUIDelegat
         closeBtn.bezelStyle = .rounded
         closeBtn.translatesAutoresizingMaskIntoConstraints = false
 
-        root.addSubview(header)
-        root.addSubview(web)
-        root.addSubview(check)
-        root.addSubview(closeBtn)
-        panel.contentView = root
+        let content = NSView()
+        content.addSubview(header)
+        content.addSubview(web)
+        content.addSubview(check)
+        content.addSubview(closeBtn)
+        window.contentView = content
 
         NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: root.topAnchor, constant: 10),
-            header.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
-            header.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -14),
+            header.topAnchor.constraint(equalTo: content.topAnchor, constant: 10),
+            header.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 14),
+            header.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -14),
             web.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 8),
-            web.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            web.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            web.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            web.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             web.bottomAnchor.constraint(equalTo: check.topAnchor, constant: -10),
-            closeBtn.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
-            closeBtn.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -12),
-            check.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -14),
-            check.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -12)
+            closeBtn.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 14),
+            closeBtn.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -12),
+            check.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -14),
+            check.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -12)
         ])
         web.load(URLRequest(url: URL(string: "https://claude.ai/login")!))
-        return panel
+        return window
     }
 
     @objc private func recheck() {
@@ -116,22 +144,22 @@ final class ClaudeConnectController: NSObject, WKNavigationDelegate, WKUIDelegat
 
     @objc private func closeClicked() { close() }
 
-    @objc func windowWillClose(_ notification: Notification) {
-        panel = nil
-        webView = nil
-        statusLabel = nil
-        onConnected = nil
-        previousActivationPolicy = nil
-        DispatchQueue.main.async {
-            TrayLifecycle.returnToTrayOnlyIfNoUserWindows()
-        }
+    func windowWillClose(_ notification: Notification) {
+        // Traffic-light / ⌘W — teardown once; don't orderOut again.
+        finishClosing(orderOut: false)
     }
 
     private func setStatus(_ text: String) { statusLabel?.stringValue = text }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in self?.inspectCookies() }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in self?.inspectCookies() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            guard let self, !self.isClosing else { return }
+            self.inspectCookies()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+            guard let self, !self.isClosing else { return }
+            self.inspectCookies()
+        }
     }
 
     func webView(
@@ -147,10 +175,10 @@ final class ClaudeConnectController: NSObject, WKNavigationDelegate, WKUIDelegat
     }
 
     private func inspectCookies() {
-        guard let store = webView?.configuration.websiteDataStore.httpCookieStore else { return }
+        guard !isClosing, let store = webView?.configuration.websiteDataStore.httpCookieStore else { return }
         store.getAllCookies { [weak self] cookies in
             Task { @MainActor in
-                guard let self, !self.didEmit else { return }
+                guard let self, !self.didEmit, !self.isClosing else { return }
                 let relevant = cookies.filter {
                     $0.domain.contains("claude.ai") && ($0.name == "sessionKey" || $0.name == "sessionKeyV3")
                 }
@@ -163,7 +191,9 @@ final class ClaudeConnectController: NSObject, WKNavigationDelegate, WKUIDelegat
                 self.didEmit = true
                 self.setStatus("Сессия найдена, сохраняю…")
                 let header = "sessionKey=\(session)"
-                self.onConnected?(header)
+                let callback = self.onConnected
+                // Callback before close so Settings can update state while still .regular.
+                callback?(header)
                 self.close()
             }
         }

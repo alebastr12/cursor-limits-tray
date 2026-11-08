@@ -42,9 +42,9 @@ macOS 14+, не нотаризовано (ad-hoc подпись).
 
 ## Установка
 
-### DMG (рекомендуется) — v0.2.10
+### DMG (рекомендуется) — v0.2.11
 
-1. Скачайте [**TrayAILimits-0.2.10.dmg**](https://github.com/alebastr12/cursor-limits-tray/releases/download/v0.2.10/TrayAILimits-0.2.10.dmg) или откройте [последний релиз](https://github.com/alebastr12/cursor-limits-tray/releases/latest).
+1. Скачайте [**TrayAILimits-0.2.11.dmg**](https://github.com/alebastr12/cursor-limits-tray/releases/download/v0.2.11/TrayAILimits-0.2.11.dmg) или откройте [последний релиз](https://github.com/alebastr12/cursor-limits-tray/releases/latest).
 2. Перетащите `TrayAILimits.app` в **Программы** (в Finder отображается как **Tray AI limits**).
 3. Первый запуск: правый клик → **Открыть** (приложение ad-hoc, Gatekeeper спросит подтверждение).
 4. Старую `CursorLimitsTray.app` можно удалить из Программ.
@@ -55,8 +55,8 @@ macOS 14+, не нотаризовано (ad-hoc подпись).
 git clone https://github.com/alebastr12/cursor-limits-tray.git
 cd cursor-limits-tray
 ./Scripts/build-app.sh
-./Scripts/package-dmg.sh 0.2.10
-open dist/TrayAILimits-0.2.10.dmg
+./Scripts/package-dmg.sh 0.2.11
+open dist/TrayAILimits-0.2.11.dmg
 ```
 
 Нужны Xcode Command Line Tools / Swift toolchain.
@@ -125,7 +125,7 @@ open dist/TrayAILimits-0.2.10.dmg
 ## Релизы
 
 Все версии и DMG: **[Releases](https://github.com/alebastr12/cursor-limits-tray/releases)**  
-Актуальный: [v0.2.10](https://github.com/alebastr12/cursor-limits-tray/releases/tag/v0.2.10)
+Актуальный: [v0.2.11](https://github.com/alebastr12/cursor-limits-tray/releases/tag/v0.2.11)
 
 ## Лицензия
 

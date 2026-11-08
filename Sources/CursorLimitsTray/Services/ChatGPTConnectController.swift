@@ -1,94 +1,102 @@
 import AppKit
 import WebKit
 
-/// Owns a standalone floating login panel so MenuBarExtra popover dismissal
-/// cannot tear down the ChatGPT connect UI mid-consent / mid-login.
+/// Standalone login window for ChatGPT (survives tray popover dismiss).
+/// Uses a normal `NSWindow` so Settings remains clickable after close (same freeze fix as Claude).
 @MainActor
 final class ChatGPTConnectController: NSObject, WKNavigationDelegate, WKUIDelegate, NSWindowDelegate {
     static let shared = ChatGPTConnectController()
 
-    private var panel: NSPanel?
+    private var window: NSWindow?
     private var webView: WKWebView?
     private var statusLabel: NSTextField?
     private var onConnected: ((String) -> Void)?
     private var didEmit = false
     private var consentAttempts = 0
-
-    private var previousActivationPolicy: NSApplication.ActivationPolicy?
+    private var sessionStarted = false
+    private var isClosing = false
 
     func present(onConnected: @escaping (String) -> Void) {
         self.onConnected = onConnected
         didEmit = false
         consentAttempts = 0
+        isClosing = false
 
-        // Accessory (menu-bar) apps often fail to deliver mouse events to sheets/panels.
-        if previousActivationPolicy == nil {
-            previousActivationPolicy = NSApp.activationPolicy()
-            TrayLifecycle.beginShowingWindow()
+        if !sessionStarted {
+            sessionStarted = true
+            TrayLifecycle.beginSessionWindow()
         }
 
-        if let panel, panel.isVisible {
-            panel.makeKeyAndOrderFront(nil)
+        if let window, window.isVisible {
+            window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
 
-        let panel = makePanel()
-        self.panel = panel
-        panel.makeKeyAndOrderFront(nil)
+        let window = makeWindow()
+        self.window = window
+        window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
 
-        // Popover dismiss often races with panel presentation — re-assert key.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self, weak panel] in
-            panel?.makeKeyAndOrderFront(nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self, weak window] in
+            guard let self, !self.isClosing else { return }
+            window?.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
-            self?.webView?.window?.makeFirstResponder(self?.webView)
+            self.webView?.window?.makeFirstResponder(self.webView)
         }
     }
 
     func close() {
-        panel?.orderOut(nil)
-        panel = nil
+        finishClosing(orderOut: true)
+    }
+
+    private func finishClosing(orderOut: Bool) {
+        guard !isClosing else { return }
+        isClosing = true
+
+        let hadSession = sessionStarted
+        sessionStarted = false
+
+        if orderOut {
+            window?.delegate = nil
+            window?.orderOut(nil)
+            window?.close()
+        }
+        window = nil
         webView = nil
         statusLabel = nil
         onConnected = nil
-        previousActivationPolicy = nil
-        // Closing login UI must not quit — return to tray-only if nothing else is open.
-        TrayLifecycle.returnToTrayOnlyIfNoUserWindows()
+
+        if hadSession {
+            TrayLifecycle.endSessionWindow()
+        } else {
+            TrayLifecycle.restoreKeyToBestUserWindow()
+            TrayLifecycle.returnToTrayOnlyIfNoUserWindows()
+        }
     }
 
-    // MARK: - UI
-
-    private func makePanel() -> NSPanel {
-        let panel = NSPanel(
+    private func makeWindow() -> NSWindow {
+        let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 720, height: 720),
-            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
-        panel.title = "Подключение ChatGPT"
-        panel.isFloatingPanel = true
-        panel.level = .floating
-        panel.hidesOnDeactivate = false
-        panel.isReleasedWhenClosed = false
-        panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
-        panel.becomesKeyOnlyIfNeeded = false
-        panel.worksWhenModal = true
-        panel.minSize = NSSize(width: 560, height: 520)
-        panel.delegate = self
-        panel.center()
+        window.title = "Подключение ChatGPT"
+        window.isReleasedWhenClosed = false
+        window.level = .normal
+        window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        window.minSize = NSSize(width: 560, height: 520)
+        window.delegate = self
+        window.center()
 
-        let root = NSView(frame: panel.contentView!.bounds)
-        root.autoresizingMask = [.width, .height]
-
-        let header = NSTextField(labelWithString: "Войдите в ChatGPT. Окно не закроется при клике снаружи.")
+        let header = NSTextField(labelWithString: "Войдите в ChatGPT. После входа нажмите «проверить» или дождитесь авто-сохранения.")
         header.font = .systemFont(ofSize: 12)
         header.textColor = .secondaryLabelColor
         header.translatesAutoresizingMaskIntoConstraints = false
         statusLabel = header
 
         let config = WKWebViewConfiguration()
-        // Persistent store so consent cookies stick during the login flow.
         config.websiteDataStore = .default()
         config.preferences.javaScriptCanOpenWindowsAutomatically = true
         let web = WKWebView(frame: .zero, configuration: config)
@@ -105,31 +113,32 @@ final class ChatGPTConnectController: NSObject, WKNavigationDelegate, WKUIDelega
         closeButton.bezelStyle = .rounded
         closeButton.translatesAutoresizingMaskIntoConstraints = false
 
-        root.addSubview(header)
-        root.addSubview(web)
-        root.addSubview(checkButton)
-        root.addSubview(closeButton)
-        panel.contentView = root
+        let content = NSView()
+        content.addSubview(header)
+        content.addSubview(web)
+        content.addSubview(checkButton)
+        content.addSubview(closeButton)
+        window.contentView = content
 
         NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: root.topAnchor, constant: 10),
-            header.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
-            header.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -14),
+            header.topAnchor.constraint(equalTo: content.topAnchor, constant: 10),
+            header.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 14),
+            header.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -14),
 
             web.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 8),
-            web.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            web.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            web.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            web.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             web.bottomAnchor.constraint(equalTo: checkButton.topAnchor, constant: -10),
 
-            closeButton.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
-            closeButton.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -12),
+            closeButton.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 14),
+            closeButton.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -12),
 
-            checkButton.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -14),
-            checkButton.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -12)
+            checkButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -14),
+            checkButton.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -12)
         ])
 
         web.load(URLRequest(url: URL(string: "https://chatgpt.com")!))
-        return panel
+        return window
     }
 
     @objc private func recheck() {
@@ -141,16 +150,8 @@ final class ChatGPTConnectController: NSObject, WKNavigationDelegate, WKUIDelega
         close()
     }
 
-    @objc func windowWillClose(_ notification: Notification) {
-        // Red traffic-light / Cmd+W — hide only; tray keeps polling.
-        panel = nil
-        webView = nil
-        statusLabel = nil
-        onConnected = nil
-        previousActivationPolicy = nil
-        DispatchQueue.main.async {
-            TrayLifecycle.returnToTrayOnlyIfNoUserWindows()
-        }
+    func windowWillClose(_ notification: Notification) {
+        finishClosing(orderOut: false)
     }
 
     private func setStatus(_ text: String) {
@@ -162,14 +163,16 @@ final class ChatGPTConnectController: NSObject, WKNavigationDelegate, WKUIDelega
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         tryAcceptCookieBanner(in: webView)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            self?.inspectCookies()
+            guard let self, !self.isClosing else { return }
+            self.inspectCookies()
         }
-        // Cookie banners often mount late.
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-            self?.tryAcceptCookieBanner(in: webView)
+            guard let self, !self.isClosing else { return }
+            self.tryAcceptCookieBanner(in: webView)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak self] in
-            self?.tryAcceptCookieBanner(in: webView)
+            guard let self, !self.isClosing else { return }
+            self.tryAcceptCookieBanner(in: webView)
         }
     }
 
@@ -178,7 +181,6 @@ final class ChatGPTConnectController: NSObject, WKNavigationDelegate, WKUIDelega
         decidePolicyFor navigationAction: WKNavigationAction,
         decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
     ) {
-        // Keep OAuth / consent navigations inside this window when possible.
         decisionHandler(.allow)
     }
 
@@ -188,7 +190,6 @@ final class ChatGPTConnectController: NSObject, WKNavigationDelegate, WKUIDelega
         for navigationAction: WKNavigationAction,
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
-        // OpenAI sometimes opens consent/login in a target=_blank — load in-place.
         if navigationAction.targetFrame == nil, let url = navigationAction.request.url {
             webView.load(URLRequest(url: url))
         }
@@ -223,7 +224,6 @@ final class ChatGPTConnectController: NSObject, WKNavigationDelegate, WKUIDelega
               }
             }
           }
-          // OneTrust / common CMP ids
           const ids = [
             'onetrust-accept-btn-handler',
             'accept-button',
@@ -233,7 +233,6 @@ final class ChatGPTConnectController: NSObject, WKNavigationDelegate, WKUIDelega
           for (const id of ids) {
             if (clickIf(document.getElementById(id))) return 'clicked-id:' + id;
           }
-          // Shadow / nested consent roots
           const root = document.querySelector('#onetrust-banner-sdk, #cookie-banner, [id*="cookie"], [class*="cookie"]');
           if (root) {
             const btn = root.querySelector('button');
@@ -250,10 +249,10 @@ final class ChatGPTConnectController: NSObject, WKNavigationDelegate, WKUIDelega
     }
 
     private func inspectCookies() {
-        guard let store = webView?.configuration.websiteDataStore.httpCookieStore else { return }
+        guard !isClosing, let store = webView?.configuration.websiteDataStore.httpCookieStore else { return }
         store.getAllCookies { [weak self] cookies in
             Task { @MainActor in
-                guard let self, !self.didEmit else { return }
+                guard let self, !self.didEmit, !self.isClosing else { return }
                 let relevant = cookies.filter {
                     $0.domain.contains("chatgpt.com") && $0.name.contains("next-auth.session-token")
                 }

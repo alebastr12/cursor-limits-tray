@@ -140,11 +140,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// Activation policy helpers: floating login / debug window use `.regular`, then back to `.accessory` (tray-only).
+/// Activation policy helpers: login / Settings use `.regular`, then back to `.accessory` (tray-only).
+///
+/// Critical: never flip to `.accessory` while Settings (or another user window) is still open —
+/// that freezes SwiftUI buttons after Claude/ChatGPT login panels close.
 enum TrayLifecycle {
+    /// Nested present() of connect panels / alerts that need `.regular`.
+    private static var sessionDepth = 0
+
     static func beginShowingWindow() {
         if NSApp.activationPolicy() != .regular {
             NSApp.setActivationPolicy(.regular)
+        }
+    }
+
+    static func beginSessionWindow() {
+        sessionDepth += 1
+        beginShowingWindow()
+    }
+
+    static func endSessionWindow() {
+        sessionDepth = max(0, sessionDepth - 1)
+        // Let the closing window finish resigning key, then restore Settings focus.
+        DispatchQueue.main.async {
+            restoreKeyToBestUserWindow()
+            DispatchQueue.main.async {
+                returnToTrayOnlyIfNoUserWindows()
+            }
         }
     }
 
@@ -154,16 +176,48 @@ enum TrayLifecycle {
         }
     }
 
-    /// Hide Dock icon again when no user-facing windows remain (status item is not an NSWindow).
-    static func returnToTrayOnlyIfNoUserWindows() {
-        let remaining = NSApp.windows.filter { window in
+    static func isLoginWindow(_ window: NSWindow) -> Bool {
+        let t = window.title
+        return t.contains("Подключение") || t.localizedCaseInsensitiveContains("Connect")
+    }
+
+    static func isSettingsLikeWindow(_ window: NSWindow) -> Bool {
+        let t = window.title
+        return t.localizedCaseInsensitiveContains("Settings")
+            || t.contains("Настройки")
+            || t.localizedCaseInsensitiveContains("Preferences")
+    }
+
+    /// Visible windows that should keep the app in `.regular` (Settings, debug, login).
+    static func userFacingWindows(includingLogin: Bool = true) -> [NSWindow] {
+        NSApp.windows.filter { window in
             guard window.isVisible else { return false }
-            // Ignore borderless snapshot / hosting helpers if any linger.
             if window.styleMask.contains(.borderless) && window.title.isEmpty { return false }
+            if !includingLogin && isLoginWindow(window) { return false }
             return true
         }
-        if remaining.isEmpty {
+    }
+
+    static func restoreKeyToBestUserWindow() {
+        let windows = userFacingWindows(includingLogin: false)
+        let preferred = windows.first(where: isSettingsLikeWindow) ?? windows.first
+        guard let preferred else { return }
+        beginShowingWindow()
+        preferred.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Hide Dock icon again when no user-facing windows remain (status item is not an NSWindow).
+    static func returnToTrayOnlyIfNoUserWindows() {
+        let remaining = userFacingWindows(includingLogin: true)
+        if remaining.isEmpty && sessionDepth == 0 {
             returnToTrayOnly()
+        } else {
+            // Settings (or login) still up — stay interactive.
+            beginShowingWindow()
+            if NSApp.keyWindow == nil || (NSApp.keyWindow.map(isLoginWindow) == true) {
+                restoreKeyToBestUserWindow()
+            }
         }
     }
 }
