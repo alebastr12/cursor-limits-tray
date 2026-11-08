@@ -20,7 +20,7 @@ final class StatusItemController: NSObject {
         item.button?.target = self
         item.button?.action = #selector(togglePopover(_:))
         item.button?.imagePosition = .imageLeading
-        item.button?.setAccessibilityTitle("Лимиты")
+        item.button?.setAccessibilityTitle("Tray AI limits")
         statusItem = item
 
         let pop = NSPopover()
@@ -82,7 +82,7 @@ final class StatusItemController: NSObject {
         colorSegment(in: attr, letter: "A", severity: claude, font: font)
 
         button.attributedTitle = attr
-        button.setAccessibilityTitle(text.isEmpty ? "Лимиты" : "Лимиты \(text)")
+        button.setAccessibilityTitle(text.isEmpty ? "Tray AI limits" : "Tray AI limits \(text)")
 
         let image: NSImage?
         if let url = Bundle.main.url(forResource: "MenuBarGlyph", withExtension: "png"),

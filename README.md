@@ -1,14 +1,16 @@
-# Cursor Limits Tray
+# Tray AI limits
 
 Native macOS menu-bar app for live **Cursor** / **ChatGPT** / **Claude** usage limits.
 
 Нативное приложение в строке меню macOS: живые лимиты Cursor, ChatGPT и Claude — без паролей Keychain в обычном сценарии.
 
+Репозиторий: [`cursor-limits-tray`](https://github.com/alebastr12/cursor-limits-tray) (имя продукта — **Tray AI limits**).
+
 ![Строка меню](docs/screenshots/menubar.png)
 
 ## Что это
 
-**Cursor Limits Tray** показывает остаток лимитов прямо в menu bar (`C63% · G93% · …`) и в компактном popover. Опрос раз в ~45 с. В трее и popover видны только подключённые провайдеры — без заглушек `C—` / `G—` / `A—`.
+**Tray AI limits** показывает остаток лимитов прямо в menu bar (`C63% · G93% · …`) и в компактном popover. Опрос раз в ~45 с. В трее и popover видны только подключённые провайдеры — без заглушек `C—` / `G—` / `A—`.
 
 macOS 14+, не нотаризовано (ad-hoc подпись).
 
@@ -36,11 +38,12 @@ macOS 14+, не нотаризовано (ad-hoc подпись).
 
 ## Установка
 
-### DMG (рекомендуется) — v0.2.6
+### DMG (рекомендуется) — v0.2.7
 
-1. Скачайте [**CursorLimitsTray-0.2.6.dmg**](https://github.com/alebastr12/cursor-limits-tray/releases/download/v0.2.6/CursorLimitsTray-0.2.6.dmg) или откройте [последний релиз](https://github.com/alebastr12/cursor-limits-tray/releases/latest).
-2. Перетащите `CursorLimitsTray.app` в **Программы**.
+1. Скачайте [**TrayAILimits-0.2.7.dmg**](https://github.com/alebastr12/cursor-limits-tray/releases/download/v0.2.7/TrayAILimits-0.2.7.dmg) или откройте [последний релиз](https://github.com/alebastr12/cursor-limits-tray/releases/latest).
+2. Перетащите `TrayAILimits.app` в **Программы** (в Finder отображается как **Tray AI limits**).
 3. Первый запуск: правый клик → **Открыть** (приложение ad-hoc, Gatekeeper спросит подтверждение).
+4. Старую `CursorLimitsTray.app` можно удалить из Программ.
 
 ### Из исходников
 
@@ -48,8 +51,8 @@ macOS 14+, не нотаризовано (ad-hoc подпись).
 git clone https://github.com/alebastr12/cursor-limits-tray.git
 cd cursor-limits-tray
 ./Scripts/build-app.sh
-./Scripts/package-dmg.sh 0.2.6
-open dist/CursorLimitsTray-0.2.6.dmg
+./Scripts/package-dmg.sh 0.2.7
+open dist/TrayAILimits-0.2.7.dmg
 ```
 
 Нужны Xcode Command Line Tools / Swift toolchain.
@@ -118,7 +121,7 @@ open dist/CursorLimitsTray-0.2.6.dmg
 ## Релизы
 
 Все версии и DMG: **[Releases](https://github.com/alebastr12/cursor-limits-tray/releases)**  
-Актуальный: [v0.2.6](https://github.com/alebastr12/cursor-limits-tray/releases/tag/v0.2.6)
+Актуальный: [v0.2.7](https://github.com/alebastr12/cursor-limits-tray/releases/tag/v0.2.7)
 
 ## Лицензия
 

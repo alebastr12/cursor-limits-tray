@@ -7,18 +7,18 @@ cd "$ROOT"
 
 VERSION="${1:-}"
 if [[ -z "$VERSION" ]]; then
-  VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo "0.2.0")"
+  VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo "0.2.7")"
   VERSION="${VERSION#v}"
 fi
 
 ./Scripts/build-app.sh
 
 DIST="$ROOT/dist"
-APP="$DIST/CursorLimitsTray.app"
+APP="$DIST/TrayAILimits.app"
 STAGE="$DIST/dmg-stage"
-VOL="Cursor Limits Tray"
-DMG_TMP="$DIST/CursorLimitsTray-${VERSION}-tmp.dmg"
-DMG="$DIST/CursorLimitsTray-${VERSION}.dmg"
+VOL="Tray AI limits"
+DMG_TMP="$DIST/TrayAILimits-${VERSION}-tmp.dmg"
+DMG="$DIST/TrayAILimits-${VERSION}.dmg"
 
 rm -rf "$STAGE" "$DMG_TMP" "$DMG"
 mkdir -p "$STAGE"
@@ -41,8 +41,8 @@ rm -f "$DMG_TMP"
 rm -rf "$STAGE"
 
 # Stable alias
-cp -f "$DMG" "$DIST/CursorLimitsTray-macOS.dmg"
+cp -f "$DMG" "$DIST/TrayAILimits-macOS.dmg"
 
 echo "Built $DMG"
-echo "Also: $DIST/CursorLimitsTray-macOS.dmg"
-ls -lh "$DMG" "$DIST/CursorLimitsTray-macOS.dmg"
+echo "Also: $DIST/TrayAILimits-macOS.dmg"
+ls -lh "$DMG" "$DIST/TrayAILimits-macOS.dmg"

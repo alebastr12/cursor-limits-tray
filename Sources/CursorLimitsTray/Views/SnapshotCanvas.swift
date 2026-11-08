@@ -13,7 +13,7 @@ struct SnapshotCanvas: View {
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(Color.accentColor)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Лимиты")
+                    Text("Tray AI limits")
                         .font(.system(.headline, design: .rounded))
                     Text(snapshot.isDemo ? "Демо · каждые 45 с" : "Живые данные · каждые 45 с")
                         .font(.caption)

@@ -9,7 +9,7 @@ struct CursorLimitsTrayApp: App {
         // Status item + popover are owned by StatusItemController (AppKit).
         // Closing this window must NOT quit — see AppDelegate.
 
-        Window("Лимиты", id: "debug-popover") {
+        Window("Tray AI limits", id: "debug-popover") {
             PopoverView(poller: appDelegate.poller)
                 .onAppear { appDelegate.poller.start() }
         }

@@ -16,7 +16,7 @@ struct MenuBarLabel: View {
                     .foregroundStyle(overallColor)
             }
         }
-        .accessibilityLabel(poller.menuBarText.isEmpty ? "Лимиты" : poller.menuBarText)
+        .accessibilityLabel(poller.menuBarText.isEmpty ? "Tray AI limits" : poller.menuBarText)
     }
 
     private var overallColor: Color {

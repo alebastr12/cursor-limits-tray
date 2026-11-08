@@ -2,4 +2,4 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 "$ROOT/Scripts/build-app.sh"
-open "$ROOT/dist/CursorLimitsTray.app" --args "$@"
+open "$ROOT/dist/TrayAILimits.app" --args "$@"

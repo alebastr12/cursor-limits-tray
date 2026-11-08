@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-APP_DIR="$ROOT/dist/CursorLimitsTray.app"
+APP_DIR="$ROOT/dist/TrayAILimits.app"
 CONTENTS="$APP_DIR/Contents"
 MACOS="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
@@ -18,6 +18,8 @@ swift build -c release --product CursorLimitsTray
 
 BIN="$(swift build -c release --show-bin-path)/CursorLimitsTray"
 rm -rf "$APP_DIR"
+# Drop legacy bundle name if present
+rm -rf "$ROOT/dist/CursorLimitsTray.app"
 mkdir -p "$MACOS" "$RESOURCES"
 cp "$BIN" "$MACOS/CursorLimitsTray"
 cp "$ROOT/Resources/Info.plist" "$CONTENTS/Info.plist"

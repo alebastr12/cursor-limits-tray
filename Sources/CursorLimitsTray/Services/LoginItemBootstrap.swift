@@ -61,7 +61,7 @@ enum LoginItemBootstrap {
 
     private static func copyToApplicationsAndRelaunch(from bundlePath: String) {
         let fm = FileManager.default
-        let dest = "/Applications/CursorLimitsTray.app"
+        let dest = "/Applications/TrayAILimits.app"
         do {
             if fm.fileExists(atPath: dest) {
                 // Prefer replace without elevating; if locked, show manual drag (no auth retry).
@@ -75,7 +75,7 @@ enum LoginItemBootstrap {
         } catch {
             let alert = NSAlert()
             alert.messageText = "Не удалось скопировать без пароля"
-            alert.informativeText = "Перетащите CursorLimitsTray.app в «Программы» вручную.\n\(error.localizedDescription)"
+            alert.informativeText = "Перетащите TrayAILimits.app в «Программы» вручную.\n\(error.localizedDescription)"
             alert.runModal()
         }
     }
