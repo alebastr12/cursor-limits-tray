@@ -110,7 +110,8 @@ final class StatusItemController: NSObject {
 
     private func providerAttachment(resource: String, color: NSColor, font: NSFont) -> NSTextAttachment? {
         guard let base = loadProviderTemplate(named: resource) else { return nil }
-        let side: CGFloat = 12
+        // ~14–16pt: readable next to %, still fits menu-bar / notch.
+        let side: CGFloat = 15
         let size = NSSize(width: side, height: side)
         let tinted = NSImage(size: size, flipped: false) { rect in
             // Template: draw as mask then fill with severity color.
