@@ -46,6 +46,14 @@ struct UsageSnapshot: Equatable {
                         percentUsed: 21,
                         remainingLabel: L10n.remainingPercent(79),
                         resetLabel: L10n.resetLabel(relativeTo: weeklyReset, now: now)
+                    ),
+                    LimitRow(
+                        id: "c2",
+                        title: "Other models",
+                        detail: "Third-party / API pool",
+                        percentUsed: 44,
+                        remainingLabel: L10n.remainingPercent(56),
+                        resetLabel: nil
                     )
                 ],
                 fetchedAt: now, error: nil

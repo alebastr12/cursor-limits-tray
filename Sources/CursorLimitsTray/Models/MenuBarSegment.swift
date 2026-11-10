@@ -1,6 +1,6 @@
 import Foundation
 
-/// One connected provider in the menu bar: icon + remaining %.
+/// One live usage meter in the menu bar (icon shown once per contiguous provider group).
 struct MenuBarSegment: Equatable {
     enum Provider: Equatable {
         case cursor

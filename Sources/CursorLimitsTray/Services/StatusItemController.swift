@@ -77,19 +77,30 @@ final class StatusItemController: NSObject {
     private func composedTitle(segments: [MenuBarSegment]) -> NSAttributedString {
         let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
         let result = NSMutableAttributedString()
-        let separator = NSAttributedString(
+        let providerSeparator = NSAttributedString(
             string: " · ",
             attributes: [
                 .font: font,
                 .foregroundColor: NSColor.secondaryLabelColor
             ]
         )
+        let sameProviderGap = NSAttributedString(
+            string: " ",
+            attributes: [.font: font]
+        )
 
         for (index, segment) in segments.enumerated() {
-            if index > 0 { result.append(separator) }
+            let previous = index > 0 ? segments[index - 1] : nil
+            let isNewProvider = previous.map { $0.provider != segment.provider } ?? true
+
+            if index > 0 {
+                result.append(isNewProvider ? providerSeparator : sameProviderGap)
+            }
 
             let color = nsColor(segment.severity)
-            if let icon = providerAttachment(resource: segment.provider.resourceName, color: color, font: font) {
+            // One brand icon per provider; extra limits for the same provider are bare %.
+            if isNewProvider,
+               let icon = providerAttachment(resource: segment.provider.resourceName, color: color, font: font) {
                 result.append(NSAttributedString(attachment: icon))
                 result.append(NSAttributedString(
                     string: "\u{200A}",
