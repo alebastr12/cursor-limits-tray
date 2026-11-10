@@ -13,9 +13,9 @@ final class UsagePoller: ObservableObject {
     @Published private(set) var claudeConnected = false
     /// True after user connected Claude (secrets in app Keychain). Hidden from tray/popover until then.
     @Published private(set) var claudeConfigured = false
-    /// Compact menu-bar: icon+% for connected providers only. Empty if none.
+    /// Compact menu-bar: one segment per live % (all limits of connected providers). Empty if none.
     @Published private(set) var menuBarSegments: [MenuBarSegment] = []
-    /// Accessibility / legacy plain text (e.g. `63% · 93%`).
+    /// Accessibility / legacy plain text (e.g. `79% 56% · 67% 88%`).
     @Published private(set) var menuBarText: String = ""
     @Published private(set) var cursorSeverity: LimitSeverity = .unknown
     @Published private(set) var chatGPTSeverity: LimitSeverity = .unknown
@@ -316,49 +316,78 @@ final class UsagePoller: ObservableObject {
     }
 
     private func publishMenuBar() {
-        // Only connected providers with a live % — no letter placeholders.
+        // Only connected providers — one menu-bar segment per live % row (all limits).
         var segments: [MenuBarSegment] = []
 
-        if cursorConnected, let cLeft = remainingPercent(from: snapshot.cursor) {
-            cursorSeverity = severity(remaining: cLeft, connected: true)
-            segments.append(MenuBarSegment(
-                provider: .cursor,
-                remainingPercent: Int(cLeft.rounded()),
-                severity: cursorSeverity
-            ))
+        if cursorConnected {
+            let lefts = remainingPercents(from: snapshot.cursor)
+            cursorSeverity = severity(remaining: lefts.min(), connected: !lefts.isEmpty)
+            for left in lefts {
+                segments.append(MenuBarSegment(
+                    provider: .cursor,
+                    remainingPercent: Int(left.rounded()),
+                    severity: severity(remaining: left, connected: true)
+                ))
+            }
         } else {
             cursorSeverity = .unknown
         }
 
-        if chatGPTConnected, let gLeft = remainingPercent(from: snapshot.chatGPT) {
-            chatGPTSeverity = severity(remaining: gLeft, connected: true)
-            segments.append(MenuBarSegment(
-                provider: .chatGPT,
-                remainingPercent: Int(gLeft.rounded()),
-                severity: chatGPTSeverity
-            ))
+        if chatGPTConnected {
+            let lefts = remainingPercents(from: snapshot.chatGPT)
+            chatGPTSeverity = severity(remaining: lefts.min(), connected: !lefts.isEmpty)
+            for left in lefts {
+                segments.append(MenuBarSegment(
+                    provider: .chatGPT,
+                    remainingPercent: Int(left.rounded()),
+                    severity: severity(remaining: left, connected: true)
+                ))
+            }
         } else {
             chatGPTSeverity = .unknown
         }
 
-        if claudeConnected, let aLeft = remainingPercent(from: snapshot.claude) {
-            claudeSeverity = severity(remaining: aLeft, connected: true)
-            segments.append(MenuBarSegment(
-                provider: .claude,
-                remainingPercent: Int(aLeft.rounded()),
-                severity: claudeSeverity
-            ))
+        if claudeConnected {
+            let lefts = remainingPercents(from: snapshot.claude)
+            claudeSeverity = severity(remaining: lefts.min(), connected: !lefts.isEmpty)
+            for left in lefts {
+                segments.append(MenuBarSegment(
+                    provider: .claude,
+                    remainingPercent: Int(left.rounded()),
+                    severity: severity(remaining: left, connected: true)
+                ))
+            }
         } else {
             claudeSeverity = .unknown
         }
 
         menuBarSegments = segments
-        menuBarText = segments.map { "\($0.remainingPercent)%" }.joined(separator: " · ")
+        menuBarText = Self.plainMenuBarText(segments: segments)
     }
 
-    private func remainingPercent(from provider: ProviderSnapshot) -> Double? {
-        guard let row = provider.rows.first(where: { $0.percentUsed != nil }), let used = row.percentUsed else { return nil }
-        return max(0, min(100, 100 - used))
+    /// Compact plain text: `79% 88% · 67% 88%` (space within provider, · between).
+    static func plainMenuBarText(segments: [MenuBarSegment]) -> String {
+        var parts: [String] = []
+        var current: [String] = []
+        var lastProvider: MenuBarSegment.Provider?
+        for segment in segments {
+            if let last = lastProvider, last != segment.provider {
+                parts.append(current.joined(separator: " "))
+                current = []
+            }
+            current.append("\(segment.remainingPercent)%")
+            lastProvider = segment.provider
+        }
+        if !current.isEmpty { parts.append(current.joined(separator: " ")) }
+        return parts.joined(separator: " · ")
+    }
+
+    /// Every row with a usable % — remaining allowance (100 − used), clamped.
+    private func remainingPercents(from provider: ProviderSnapshot) -> [Double] {
+        provider.rows.compactMap { row in
+            guard let used = row.percentUsed else { return nil }
+            return max(0, min(100, 100 - used))
+        }
     }
 
     private func severity(remaining: Double?, connected: Bool) -> LimitSeverity {

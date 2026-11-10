@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Compact live title — provider template icon + % for each connected provider.
+/// Compact live title — provider template icon + every live % for connected providers.
 struct MenuBarLabel: View {
     @ObservedObject var poller: UsagePoller
 
@@ -12,13 +12,18 @@ struct MenuBarLabel: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(Array(poller.menuBarSegments.enumerated()), id: \.offset) { index, segment in
+                    let previous = index > 0 ? poller.menuBarSegments[index - 1] : nil
+                    let isNewProvider = previous.map { $0.provider != segment.provider } ?? true
+
                     if index > 0 {
-                        Text("·")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.secondary)
+                        if isNewProvider {
+                            Text("·")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     HStack(spacing: 2) {
-                        if let ns = loadTemplate(segment.provider.resourceName) {
+                        if isNewProvider, let ns = loadTemplate(segment.provider.resourceName) {
                             Image(nsImage: ns)
                                 .resizable()
                                 .renderingMode(.template)
