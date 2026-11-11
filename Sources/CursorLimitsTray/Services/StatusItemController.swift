@@ -2,6 +2,8 @@ import AppKit
 import SwiftUI
 import Combine
 
+private let trayCornerRadius: CGFloat = 12
+
 /// Borderless non-activating panel that can sit above fullscreen Spaces.
 private final class TrayStatusPanel: NSPanel {
     override var canBecomeKey: Bool { true }
@@ -12,22 +14,40 @@ private final class TrayStatusPanel: NSPanel {
     }
 }
 
-/// Clear overlay on the status button: carries `toolTip` (attributedTitle kills system tips)
-/// and owns the click so toggle is reliable.
+/// Status-item overlay: click toggle + hover enter/exit (system `toolTip` is dead with attributedTitle).
 private final class StatusItemHitView: NSView {
     var onMouseDown: (() -> Void)?
+    var onHoverEnter: (() -> Void)?
+    var onHoverExit: (() -> Void)?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        ))
+    }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) {
+        onHoverExit?()
         onMouseDown?()
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        onHoverEnter?()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        onHoverExit?()
     }
 }
 
 /// AppKit status item with compact brand-icon + % title near the notch.
-///
-/// Uses `NSPanel` (not `NSPopover`) with `.canJoinAllSpaces` + `.fullScreenAuxiliary`
-/// and main-menu level so the tray UI appears over fullscreen Spaces.
 @MainActor
 final class StatusItemController: NSObject {
     static let shared = StatusItemController()
@@ -36,6 +56,10 @@ final class StatusItemController: NSObject {
     private var panel: TrayStatusPanel?
     private var hosting: NSHostingController<AnyView>?
     private var hitView: StatusItemHitView?
+    private var tipPanel: NSPanel?
+    private var tipLabel: NSTextField?
+    private var tipText: String = ""
+    private var tipShowWork: DispatchWorkItem?
     private var poller: UsagePoller?
     private var cancellables = Set<AnyCancellable>()
     private var eventMonitor: Any?
@@ -47,7 +71,6 @@ final class StatusItemController: NSObject {
         self.poller = poller
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        // Clicks + hover tip live on StatusItemHitView (button.toolTip fails with attributedTitle).
         item.button?.target = nil
         item.button?.action = nil
         item.button?.imagePosition = .imageOnly
@@ -60,17 +83,19 @@ final class StatusItemController: NSObject {
             hit.onMouseDown = { [weak self] in
                 self?.togglePanel(nil)
             }
+            hit.onHoverEnter = { [weak self] in
+                self?.scheduleHoverTip()
+            }
+            hit.onHoverExit = { [weak self] in
+                self?.hideHoverTip()
+            }
             button.addSubview(hit)
             hitView = hit
         }
 
         let root = AnyView(
             PopoverView(poller: poller)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color(nsColor: .windowBackgroundColor))
-                )
+                .clipShape(RoundedRectangle(cornerRadius: trayCornerRadius, style: .continuous))
         )
         let controller = NSHostingController(rootView: root)
         hosting = controller
@@ -89,11 +114,12 @@ final class StatusItemController: NSObject {
         panel.becomesKeyOnlyIfNeeded = true
         panel.isMovable = false
         panel.hasShadow = true
-        // Opaque panel — no see-through corners / desktop bleed.
-        panel.isOpaque = true
-        panel.backgroundColor = .windowBackgroundColor
+        // Clear window chrome; opaque rounded content is clipped by the hosting view layer.
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
         panel.animationBehavior = .utilityWindow
         applyFullscreenPresentation(to: panel)
+        applyRoundedMask(to: panel)
         self.panel = panel
 
         poller.$menuBarSegments
@@ -131,10 +157,9 @@ final class StatusItemController: NSObject {
             }.joined(separator: ", ")
         button.setAccessibilityTitle(a11y)
 
-        let tip = UsagePoller.menuBarTooltip(segments: segments)
-        // System toolTip on the button itself is unreliable with attributedTitle + attachments.
+        tipText = UsagePoller.menuBarTooltip(segments: segments)
         button.toolTip = nil
-        hitView?.toolTip = tip
+        hitView?.toolTip = nil
         hitView?.frame = button.bounds
 
         if segments.isEmpty {
@@ -173,7 +198,6 @@ final class StatusItemController: NSObject {
             }
 
             let color = nsColor(segment.severity)
-            // One brand icon per provider; extra limits for the same provider are bare %.
             if isNewProvider,
                let icon = providerAttachment(resource: segment.provider.resourceName, color: color, font: font) {
                 result.append(NSAttributedString(attachment: icon))
@@ -196,11 +220,9 @@ final class StatusItemController: NSObject {
 
     private func providerAttachment(resource: String, color: NSColor, font: NSFont) -> NSTextAttachment? {
         guard let base = loadProviderTemplate(named: resource) else { return nil }
-        // ~14–16pt: readable next to %, still fits menu-bar / notch.
         let side: CGFloat = 15
         let size = NSSize(width: side, height: side)
         let tinted = NSImage(size: size, flipped: false) { rect in
-            // Template: draw as mask then fill with severity color.
             base.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
             color.set()
             rect.fill(using: .sourceAtop)
@@ -224,7 +246,6 @@ final class StatusItemController: NSObject {
             img.isTemplate = true
             return img
         }
-        // Fallback path when resources are copied flat into Resources/
         let path = Bundle.main.bundlePath + "/Contents/Resources/MenuBarProviders/\(named).png"
         if let img = NSImage(contentsOfFile: path) {
             img.isTemplate = true
@@ -254,7 +275,106 @@ final class StatusItemController: NSObject {
         }
     }
 
-    /// Test / automation hook (DistributedNotification or `--show-panel`).
+    // MARK: - Hover tip (custom panel — system tooltips do not work on status items with attachments)
+
+    private func scheduleHoverTip() {
+        tipShowWork?.cancel()
+        guard !isPresented, !tipText.isEmpty else { return }
+        let work = DispatchWorkItem { [weak self] in
+            self?.showHoverTip()
+        }
+        tipShowWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
+    }
+
+    private func showHoverTip() {
+        guard !isPresented, !tipText.isEmpty, let button = statusItem?.button else { return }
+        let tip = ensureTipPanel()
+        guard let tipLabel else { return }
+        tipLabel.stringValue = tipText
+        tipLabel.preferredMaxLayoutWidth = 280
+        let labelSize = tipLabel.sizeThatFits(NSSize(width: 280, height: 10_000))
+        let padding = NSSize(width: 20, height: 16)
+        let size = NSSize(
+            width: max(120, min(300, labelSize.width + padding.width)),
+            height: max(28, labelSize.height + padding.height)
+        )
+        tip.setContentSize(size)
+        tipLabel.frame = NSRect(
+            x: padding.width / 2,
+            y: padding.height / 2,
+            width: size.width - padding.width,
+            height: labelSize.height
+        )
+
+        var anchor: NSRect?
+        if let buttonWindow = button.window {
+            anchor = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
+        }
+        let mouse = NSEvent.mouseLocation
+        let anchorRect = anchor ?? NSRect(x: mouse.x - 8, y: mouse.y - 8, width: 16, height: 16)
+        var origin = NSPoint(
+            x: anchorRect.midX - size.width / 2,
+            y: anchorRect.minY - size.height - 4
+        )
+        if let screen = button.window?.screen ?? NSScreen.main {
+            let visible = screen.visibleFrame
+            origin.x = min(max(origin.x, visible.minX + 4), visible.maxX - size.width - 4)
+            if origin.y < visible.minY + 4 {
+                origin.y = anchorRect.maxY + 4
+            }
+        }
+        tip.setFrame(NSRect(origin: origin, size: size), display: true)
+        tip.orderFrontRegardless()
+    }
+
+    private func hideHoverTip() {
+        tipShowWork?.cancel()
+        tipShowWork = nil
+        tipPanel?.orderOut(nil)
+    }
+
+    private func ensureTipPanel() -> NSPanel {
+        if let tipPanel { return tipPanel }
+
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 160, height: 40),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: true
+        )
+        panel.isReleasedWhenClosed = false
+        panel.isFloatingPanel = true
+        panel.hidesOnDeactivate = false
+        panel.hasShadow = true
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.level = .floating
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
+        panel.animationBehavior = .utilityWindow
+
+        let root = NSView(frame: .zero)
+        root.wantsLayer = true
+        root.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+        root.layer?.cornerRadius = 8
+        root.layer?.masksToBounds = true
+        panel.contentView = root
+
+        let label = NSTextField(labelWithString: "")
+        label.font = .systemFont(ofSize: 11)
+        label.textColor = .labelColor
+        label.lineBreakMode = .byWordWrapping
+        label.maximumNumberOfLines = 12
+        label.isSelectable = false
+        root.addSubview(label)
+
+        tipLabel = label
+        tipPanel = panel
+        return panel
+    }
+
+    // MARK: - Main panel
+
     func showPanelForProbe() {
         if isPresented { return }
         showPanel()
@@ -270,7 +390,7 @@ final class StatusItemController: NSObject {
 
     private func showPanel() {
         guard let panel else { return }
-        // Avoid stacking monitors / double-open.
+        hideHoverTip()
         if isPresented {
             positionVisiblePanel()
             return
@@ -278,13 +398,14 @@ final class StatusItemController: NSObject {
         isPresented = true
         positionVisiblePanel()
         applyFullscreenPresentation(to: panel)
+        applyRoundedMask(to: panel)
         panel.orderFrontRegardless()
         applyFullscreenPresentation(to: panel)
+        applyRoundedMask(to: panel)
 
         removeMonitor()
         eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self, self.isPresented else { return }
-            // Status-item re-click: ignore here — `togglePanel` / hit view owns hide.
             if self.isClickOnStatusItem(event) { return }
             if let panel = self.panel, event.windowNumber == panel.windowNumber { return }
             self.hidePanel()
@@ -303,7 +424,6 @@ final class StatusItemController: NSObject {
         if let window = event.window {
             screenPoint = window.convertPoint(toScreen: event.locationInWindow)
         } else {
-            // Global monitor events often have a nil window; locationInWindow is still screen-backed.
             screenPoint = event.locationInWindow
         }
         if let buttonWindow = button.window {
@@ -326,10 +446,20 @@ final class StatusItemController: NSObject {
             .transient,
             .ignoresCycle
         ]
-        // `.mainMenu` floats above fullscreen content; `.floating` does not.
         panel.level = .mainMenu
-        panel.isOpaque = true
-        panel.backgroundColor = .windowBackgroundColor
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+    }
+
+    private func applyRoundedMask(to panel: NSPanel) {
+        guard let content = panel.contentView else { return }
+        content.wantsLayer = true
+        content.layer?.cornerRadius = trayCornerRadius
+        content.layer?.masksToBounds = true
+        content.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        hosting?.view.wantsLayer = true
+        hosting?.view.layer?.cornerRadius = trayCornerRadius
+        hosting?.view.layer?.masksToBounds = true
     }
 
     private func positionVisiblePanel() {
@@ -338,6 +468,7 @@ final class StatusItemController: NSObject {
         hosting?.view.frame = NSRect(origin: .zero, size: size)
         panel.setContentSize(size)
         positionPanel(panel, relativeTo: button)
+        applyRoundedMask(to: panel)
     }
 
     private func positionPanel(_ panel: NSPanel, relativeTo button: NSStatusBarButton) {

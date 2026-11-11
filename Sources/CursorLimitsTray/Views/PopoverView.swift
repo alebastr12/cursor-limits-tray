@@ -51,6 +51,7 @@ struct PopoverView: View {
         }
         .frame(width: 360, height: popoverHeight)
         .background(WindowBackground())
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .sheet(isPresented: $showSettings) {
             SettingsView(poller: poller)
         }
