@@ -45,6 +45,14 @@
 "limit.weekly_pool" = "Weekly pool";
 "limit.weekly_rate" = "Weekly rate limit";
 "limit.window_5h" = "5-hour window";
+"limit.month" = "Month";
+"limit.monthly" = "Monthly";
+"limit.monthly_pool" = "Monthly pool";
+"tooltip.empty" = "No connected services";
+"tooltip.kind.5h" = "5-hour";
+"tooltip.kind.weekly" = "Weekly";
+"tooltip.kind.monthly" = "Monthly";
+"tooltip.line" = "%@: %d%%";
 "poller.note_chatgpt" = "ChatGPT connected";
 "poller.note_claude" = "Claude connected";
 "poller.note_cursor_local" = "Cursor: local token";

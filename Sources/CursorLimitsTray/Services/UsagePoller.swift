@@ -320,13 +320,14 @@ final class UsagePoller: ObservableObject {
         var segments: [MenuBarSegment] = []
 
         if cursorConnected {
-            let lefts = remainingPercents(from: snapshot.cursor)
-            cursorSeverity = severity(remaining: lefts.min(), connected: !lefts.isEmpty)
-            for left in lefts {
+            let meters = remainingMeters(from: snapshot.cursor)
+            cursorSeverity = severity(remaining: meters.map(\.remaining).min(), connected: !meters.isEmpty)
+            for meter in meters {
                 segments.append(MenuBarSegment(
                     provider: .cursor,
-                    remainingPercent: Int(left.rounded()),
-                    severity: severity(remaining: left, connected: true)
+                    remainingPercent: Int(meter.remaining.rounded()),
+                    severity: severity(remaining: meter.remaining, connected: true),
+                    kindLabel: LimitKindLabel.tooltipLabel(forRowTitle: meter.title)
                 ))
             }
         } else {
@@ -334,13 +335,14 @@ final class UsagePoller: ObservableObject {
         }
 
         if chatGPTConnected {
-            let lefts = remainingPercents(from: snapshot.chatGPT)
-            chatGPTSeverity = severity(remaining: lefts.min(), connected: !lefts.isEmpty)
-            for left in lefts {
+            let meters = remainingMeters(from: snapshot.chatGPT)
+            chatGPTSeverity = severity(remaining: meters.map(\.remaining).min(), connected: !meters.isEmpty)
+            for meter in meters {
                 segments.append(MenuBarSegment(
                     provider: .chatGPT,
-                    remainingPercent: Int(left.rounded()),
-                    severity: severity(remaining: left, connected: true)
+                    remainingPercent: Int(meter.remaining.rounded()),
+                    severity: severity(remaining: meter.remaining, connected: true),
+                    kindLabel: LimitKindLabel.tooltipLabel(forRowTitle: meter.title)
                 ))
             }
         } else {
@@ -348,13 +350,14 @@ final class UsagePoller: ObservableObject {
         }
 
         if claudeConnected {
-            let lefts = remainingPercents(from: snapshot.claude)
-            claudeSeverity = severity(remaining: lefts.min(), connected: !lefts.isEmpty)
-            for left in lefts {
+            let meters = remainingMeters(from: snapshot.claude)
+            claudeSeverity = severity(remaining: meters.map(\.remaining).min(), connected: !meters.isEmpty)
+            for meter in meters {
                 segments.append(MenuBarSegment(
                     provider: .claude,
-                    remainingPercent: Int(left.rounded()),
-                    severity: severity(remaining: left, connected: true)
+                    remainingPercent: Int(meter.remaining.rounded()),
+                    severity: severity(remaining: meter.remaining, connected: true),
+                    kindLabel: LimitKindLabel.tooltipLabel(forRowTitle: meter.title)
                 ))
             }
         } else {
@@ -363,6 +366,21 @@ final class UsagePoller: ObservableObject {
 
         menuBarSegments = segments
         menuBarText = Self.plainMenuBarText(segments: segments)
+    }
+
+    /// Hover tip text: provider headers + kind/remaining lines (connected only).
+    static func menuBarTooltip(segments: [MenuBarSegment]) -> String {
+        guard !segments.isEmpty else { return L10n.tr("tooltip.empty") }
+        var lines: [String] = []
+        var lastProvider: MenuBarSegment.Provider?
+        for segment in segments {
+            if lastProvider != segment.provider {
+                lines.append(segment.provider.accessibilityName)
+                lastProvider = segment.provider
+            }
+            lines.append(L10n.tr("tooltip.line", segment.kindLabel, segment.remainingPercent))
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// Compact plain text: `79% 88% · 67% 88%` (space within provider, · between).
@@ -383,10 +401,10 @@ final class UsagePoller: ObservableObject {
     }
 
     /// Every row with a usable % — remaining allowance (100 − used), clamped.
-    private func remainingPercents(from provider: ProviderSnapshot) -> [Double] {
+    private func remainingMeters(from provider: ProviderSnapshot) -> [(title: String, remaining: Double)] {
         provider.rows.compactMap { row in
             guard let used = row.percentUsed else { return nil }
-            return max(0, min(100, 100 - used))
+            return (row.title, max(0, min(100, 100 - used)))
         }
     }
 
