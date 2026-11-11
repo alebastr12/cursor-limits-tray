@@ -203,8 +203,8 @@ private struct LimitRowView: View {
             Text(row.detail)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            if let percent = row.percentUsed {
-                UsageBar(percent: percent)
+            if let used = row.percentUsed {
+                UsageBar(remainingPercent: max(0, min(100, 100 - used)))
             }
             if let reset = row.resetLabel {
                 Text(reset)
@@ -217,27 +217,32 @@ private struct LimitRowView: View {
     }
 }
 
+/// Filled length = remaining allowance; shrinks trailing-edge (right → left).
+/// Color follows remaining: green → yellow → red as the bar gets shorter.
 struct UsageBar: View {
-    let percent: Double
+    let remainingPercent: Double
 
     var body: some View {
         GeometryReader { geo in
-            let clamped = min(max(percent, 0), 100)
+            let remaining = min(max(remainingPercent, 0), 100)
+            let width = geo.size.width * CGFloat(remaining / 100)
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.primary.opacity(0.12))
                 Capsule()
-                    .fill(barColor(for: clamped))
-                    .frame(width: max(4, geo.size.width * CGFloat(clamped / 100)))
+                    .fill(barColor(for: remaining))
+                    .frame(width: remaining > 0 ? max(3, width) : 0, alignment: .leading)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(height: 6)
     }
 
-    private func barColor(for percent: Double) -> Color {
-        switch percent {
-        case ..<70: return Color(red: 0.20, green: 0.72, blue: 0.40)
-        case ..<90: return Color(red: 0.95, green: 0.62, blue: 0.18)
-        default: return Color(red: 0.90, green: 0.28, blue: 0.28)
+    private func barColor(for remaining: Double) -> Color {
+        // Match tray severity thresholds (remaining %).
+        switch remaining {
+        case ..<15: return Color(red: 0.90, green: 0.28, blue: 0.28)
+        case ..<35: return Color(red: 0.95, green: 0.62, blue: 0.18)
+        default: return Color(red: 0.20, green: 0.72, blue: 0.40)
         }
     }
 }

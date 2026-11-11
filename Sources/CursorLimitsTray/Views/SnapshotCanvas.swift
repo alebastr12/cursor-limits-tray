@@ -122,7 +122,9 @@ struct SnapshotCanvas: View {
                         }
                     }
                     Text(row.detail).font(.caption).foregroundStyle(.secondary)
-                    if let percent = row.percentUsed { UsageBar(percent: percent) }
+                    if let used = row.percentUsed {
+                        UsageBar(remainingPercent: max(0, min(100, 100 - used)))
+                    }
                     if let reset = row.resetLabel {
                         Text(reset).font(.caption2).foregroundStyle(.secondary)
                     }
