@@ -2,33 +2,99 @@ import AppKit
 import SwiftUI
 import Combine
 
+/// Borderless non-activating panel that can sit above fullscreen Spaces.
+private final class TrayStatusPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+
+    override func cancelOperation(_ sender: Any?) {
+        orderOut(nil)
+    }
+}
+
+/// Clear overlay on the status button: carries `toolTip` (attributedTitle kills system tips)
+/// and owns the click so toggle is reliable.
+private final class StatusItemHitView: NSView {
+    var onMouseDown: (() -> Void)?
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        onMouseDown?()
+    }
+}
+
 /// AppKit status item with compact brand-icon + % title near the notch.
+///
+/// Uses `NSPanel` (not `NSPopover`) with `.canJoinAllSpaces` + `.fullScreenAuxiliary`
+/// and main-menu level so the tray UI appears over fullscreen Spaces.
 @MainActor
 final class StatusItemController: NSObject {
     static let shared = StatusItemController()
 
     private var statusItem: NSStatusItem?
-    private var popover: NSPopover?
+    private var panel: TrayStatusPanel?
+    private var hosting: NSHostingController<AnyView>?
+    private var hitView: StatusItemHitView?
     private var poller: UsagePoller?
     private var cancellables = Set<AnyCancellable>()
     private var eventMonitor: Any?
+    private var panelHeight: CGFloat = 280
+    /// Own flag — `NSPanel.isVisible` races with the global click monitor on status-item re-clicks.
+    private var isPresented = false
 
     func install(poller: UsagePoller) {
         self.poller = poller
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.target = self
-        item.button?.action = #selector(togglePopover(_:))
+        // Clicks + hover tip live on StatusItemHitView (button.toolTip fails with attributedTitle).
+        item.button?.target = nil
+        item.button?.action = nil
         item.button?.imagePosition = .imageOnly
         item.button?.setAccessibilityTitle(L10n.appName)
         statusItem = item
 
-        let pop = NSPopover()
-        pop.behavior = .transient
-        pop.animates = true
-        pop.contentSize = NSSize(width: 360, height: 280)
-        pop.contentViewController = NSHostingController(rootView: PopoverView(poller: poller))
-        popover = pop
+        if let button = item.button {
+            let hit = StatusItemHitView(frame: button.bounds)
+            hit.autoresizingMask = [.width, .height]
+            hit.onMouseDown = { [weak self] in
+                self?.togglePanel(nil)
+            }
+            button.addSubview(hit)
+            hitView = hit
+        }
+
+        let root = AnyView(
+            PopoverView(poller: poller)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color(nsColor: .windowBackgroundColor))
+                )
+        )
+        let controller = NSHostingController(rootView: root)
+        hosting = controller
+
+        let panel = TrayStatusPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: panelHeight),
+            styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
+            backing: .buffered,
+            defer: true
+        )
+        panel.contentViewController = controller
+        panel.title = "TrayAILimitsPanel"
+        panel.isReleasedWhenClosed = false
+        panel.hidesOnDeactivate = false
+        panel.isFloatingPanel = true
+        panel.becomesKeyOnlyIfNeeded = true
+        panel.isMovable = false
+        panel.hasShadow = true
+        // Opaque panel — no see-through corners / desktop bleed.
+        panel.isOpaque = true
+        panel.backgroundColor = .windowBackgroundColor
+        panel.animationBehavior = .utilityWindow
+        applyFullscreenPresentation(to: panel)
+        self.panel = panel
 
         poller.$menuBarSegments
             .combineLatest(poller.$cursorConnected, poller.$chatGPTConnected, poller.$claudeConnected)
@@ -44,7 +110,10 @@ final class StatusItemController: NSObject {
                 case 2: height = 480
                 default: height = 560
                 }
-                self.popover?.contentSize = NSSize(width: 360, height: height)
+                self.panelHeight = height
+                if self.isPresented {
+                    self.positionVisiblePanel()
+                }
             }
             .store(in: &cancellables)
 
@@ -61,6 +130,12 @@ final class StatusItemController: NSObject {
                 L10n.tr("a11y.menubar_item", $0.provider.accessibilityName, $0.remainingPercent)
             }.joined(separator: ", ")
         button.setAccessibilityTitle(a11y)
+
+        let tip = UsagePoller.menuBarTooltip(segments: segments)
+        // System toolTip on the button itself is unreliable with attributedTitle + attachments.
+        button.toolTip = nil
+        hitView?.toolTip = tip
+        hitView?.frame = button.bounds
 
         if segments.isEmpty {
             button.attributedTitle = NSAttributedString(string: "")
@@ -179,18 +254,120 @@ final class StatusItemController: NSObject {
         }
     }
 
-    @objc private func togglePopover(_ sender: Any?) {
-        guard let button = statusItem?.button, let popover else { return }
-        if popover.isShown {
-            popover.performClose(sender)
-            removeMonitor()
+    /// Test / automation hook (DistributedNotification or `--show-panel`).
+    func showPanelForProbe() {
+        if isPresented { return }
+        showPanel()
+    }
+
+    @objc private func togglePanel(_ sender: Any?) {
+        if isPresented {
+            hidePanel()
         } else {
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-                self?.popover?.performClose(nil)
-                self?.removeMonitor()
+            showPanel()
+        }
+    }
+
+    private func showPanel() {
+        guard let panel else { return }
+        // Avoid stacking monitors / double-open.
+        if isPresented {
+            positionVisiblePanel()
+            return
+        }
+        isPresented = true
+        positionVisiblePanel()
+        applyFullscreenPresentation(to: panel)
+        panel.orderFrontRegardless()
+        applyFullscreenPresentation(to: panel)
+
+        removeMonitor()
+        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self, self.isPresented else { return }
+            // Status-item re-click: ignore here — `togglePanel` / hit view owns hide.
+            if self.isClickOnStatusItem(event) { return }
+            if let panel = self.panel, event.windowNumber == panel.windowNumber { return }
+            self.hidePanel()
+        }
+    }
+
+    private func hidePanel() {
+        isPresented = false
+        panel?.orderOut(nil)
+        removeMonitor()
+    }
+
+    private func isClickOnStatusItem(_ event: NSEvent) -> Bool {
+        guard let button = statusItem?.button else { return false }
+        let screenPoint: NSPoint
+        if let window = event.window {
+            screenPoint = window.convertPoint(toScreen: event.locationInWindow)
+        } else {
+            // Global monitor events often have a nil window; locationInWindow is still screen-backed.
+            screenPoint = event.locationInWindow
+        }
+        if let buttonWindow = button.window {
+            let buttonScreen = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
+            if buttonScreen.insetBy(dx: -2, dy: -2).contains(screenPoint) {
+                return true
             }
         }
+        if let hit = hitView, let hitWindow = hit.window {
+            let hitScreen = hitWindow.convertToScreen(hit.convert(hit.bounds, to: nil))
+            return hitScreen.insetBy(dx: -2, dy: -2).contains(screenPoint)
+        }
+        return false
+    }
+
+    private func applyFullscreenPresentation(to panel: NSPanel) {
+        panel.collectionBehavior = [
+            .canJoinAllSpaces,
+            .fullScreenAuxiliary,
+            .transient,
+            .ignoresCycle
+        ]
+        // `.mainMenu` floats above fullscreen content; `.floating` does not.
+        panel.level = .mainMenu
+        panel.isOpaque = true
+        panel.backgroundColor = .windowBackgroundColor
+    }
+
+    private func positionVisiblePanel() {
+        guard let panel, let button = statusItem?.button else { return }
+        let size = NSSize(width: 360, height: panelHeight)
+        hosting?.view.frame = NSRect(origin: .zero, size: size)
+        panel.setContentSize(size)
+        positionPanel(panel, relativeTo: button)
+    }
+
+    private func positionPanel(_ panel: NSPanel, relativeTo button: NSStatusBarButton) {
+        let size = NSSize(width: 360, height: panelHeight)
+        var anchor: NSRect?
+
+        if let buttonWindow = button.window ?? button.superview?.window {
+            let buttonRect = button.convert(button.bounds, to: nil)
+            anchor = buttonWindow.convertToScreen(buttonRect)
+        }
+
+        let mouse = NSEvent.mouseLocation
+        let anchorRect = anchor ?? NSRect(x: mouse.x - 10, y: mouse.y - 10, width: 20, height: 20)
+
+        var origin = NSPoint(
+            x: anchorRect.midX - size.width / 2,
+            y: anchorRect.minY - size.height - 6
+        )
+
+        let screen = (button.window ?? button.superview?.window)?.screen
+            ?? NSScreen.screens.first(where: { $0.frame.contains(mouse) })
+            ?? NSScreen.main
+        if let screen {
+            let visible = screen.visibleFrame
+            origin.x = min(max(origin.x, visible.minX + 8), visible.maxX - size.width - 8)
+            if origin.y < visible.minY + 8 {
+                origin.y = max(visible.minY + 8, anchorRect.maxY + 6)
+            }
+        }
+        panel.setFrame(NSRect(origin: origin, size: size), display: false)
     }
 
     private func removeMonitor() {

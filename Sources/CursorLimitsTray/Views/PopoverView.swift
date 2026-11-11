@@ -243,13 +243,6 @@ struct UsageBar: View {
 
 private struct WindowBackground: View {
     var body: some View {
-        LinearGradient(
-            colors: [
-                Color(nsColor: .windowBackgroundColor),
-                Color.accentColor.opacity(0.08)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        Color(nsColor: .windowBackgroundColor)
     }
 }

@@ -9,7 +9,9 @@ struct CursorLimitsTrayApp: App {
         // Status item + popover are owned by StatusItemController (AppKit).
         // Closing this window must NOT quit — see AppDelegate.
 
-        Window(L10n.appName, id: "debug-popover") {
+        // Debug-only window (opened via notification / --window). Kept out of normal tray use
+        // so it does not steal Space/window identity from the fullscreen-capable status panel.
+        Window("TrayAILimitsDebug", id: "debug-popover") {
             PopoverView(poller: appDelegate.poller)
                 .onAppear { appDelegate.poller.start() }
         }
@@ -27,6 +29,7 @@ struct CursorLimitsTrayApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let poller = UsagePoller()
     private var windowCloseObserver: NSObjectProtocol?
+    private var showPanelObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let args = ProcessInfo.processInfo.arguments
@@ -47,11 +50,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             TrayLifecycle.returnToTrayOnly()
         }
 
-        // Install live menu-bar item unless we're only doing offline snapshot export.
-        if snapshotPath == nil && settingsPath == nil {
+        let printTooltipOnly = args.contains("--print-tooltip")
+
+        // Install live menu-bar item unless we're only doing offline snapshot / tooltip probe.
+        if snapshotPath == nil && settingsPath == nil && !printTooltipOnly {
             StatusItemController.shared.install(poller: poller)
             // Default ON: register login item; prompt once if launched from a DMG.
             LoginItemBootstrap.applyOnLaunch()
+            showPanelObserver = DistributedNotificationCenter.default().addObserver(
+                forName: Notification.Name("local.cursor-limits-tray.showPanel"),
+                object: nil,
+                queue: .main
+            ) { _ in
+                StatusItemController.shared.showPanelForProbe()
+            }
         }
 
         windowCloseObserver = NotificationCenter.default.addObserver(
@@ -117,6 +129,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.poller.saveClaudeCookie(header)
                 }
             }
+        }
+
+        if args.contains("--show-panel") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                StatusItemController.shared.showPanelForProbe()
+            }
+        }
+
+        if args.contains("--print-tooltip") {
+            // Sync probe for CI / local verify (demo is instant; live waits on refresh Task below).
+            if args.contains("--demo") {
+                poller.applyDemoSnapshot()
+                fputs(UsagePoller.menuBarTooltip(segments: poller.menuBarSegments) + "\n", stdout)
+                fflush(stdout)
+                NSApp.terminate(nil)
+                return
+            }
+            Task { @MainActor in
+                _ = SessionSecrets.cursorAuth()
+                await poller.refresh()
+                fputs(UsagePoller.menuBarTooltip(segments: poller.menuBarSegments) + "\n", stdout)
+                fflush(stdout)
+                NSApp.terminate(nil)
+            }
+            return
         }
     }
 

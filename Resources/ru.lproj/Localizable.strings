@@ -45,6 +45,14 @@
 "limit.weekly_pool" = "Недельный пул";
 "limit.weekly_rate" = "Недельный лимит";
 "limit.window_5h" = "Окно 5 часов";
+"limit.month" = "Месяц";
+"limit.monthly" = "Месячный";
+"limit.monthly_pool" = "Месячный пул";
+"tooltip.empty" = "Нет подключённых сервисов";
+"tooltip.kind.5h" = "5 часов";
+"tooltip.kind.weekly" = "Неделя";
+"tooltip.kind.monthly" = "Месяц";
+"tooltip.line" = "%@: %d%%";
 "poller.note_chatgpt" = "ChatGPT подключён";
 "poller.note_claude" = "Claude подключён";
 "poller.note_cursor_local" = "Cursor: локальный токен";
