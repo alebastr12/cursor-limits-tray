@@ -15,10 +15,14 @@ enum HTTPClient {
         return URLSession(configuration: config)
     }()
 
+    /// Test seam: integration tests inject a `URLProtocol`-backed session.
+    static var sessionOverride: URLSession?
+
     static func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         var request = request
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        let (data, response) = try await noCache.data(for: request)
+        let session = sessionOverride ?? noCache
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw UsageError.badResponse }
         return (data, http)
     }

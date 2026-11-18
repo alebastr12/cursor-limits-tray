@@ -9,6 +9,7 @@ final class UsagePoller: ObservableObject {
     @Published var lastError: String?
 
     @Published private(set) var cursorConnected = false
+    @Published private(set) var cursorConfigured = false
     @Published private(set) var chatGPTConnected = false
     @Published private(set) var claudeConnected = false
     /// True when ChatGPT has credentials (app Keychain or recoverable WebKit session),
@@ -25,6 +26,8 @@ final class UsagePoller: ObservableObject {
     @Published private(set) var cursorSeverity: LimitSeverity = .unknown
     @Published private(set) var chatGPTSeverity: LimitSeverity = .unknown
     @Published private(set) var claudeSeverity: LimitSeverity = .unknown
+    /// First configured provider whose last refresh failed — drives the tray warning icon.
+    @Published private(set) var providerWarning: String?
     @Published var chatGPTNeedsFDA = false
     @Published var claudeNeedsFDA = false
     @Published var chatGPTAutoSource: String?
@@ -35,12 +38,14 @@ final class UsagePoller: ObservableObject {
         snapshot = .demo
         lastError = nil
         cursorConnected = true
+        cursorConfigured = true
         chatGPTConnected = true
         chatGPTConfigured = true
         chatGPTNeedsReconnect = false
         chatGPTAutoSource = nil
         claudeConnected = true
         claudeConfigured = true
+        providerWarning = nil
         publishMenuBar()
     }
 
@@ -201,6 +206,7 @@ final class UsagePoller: ObservableObject {
     func connectCursorFromLocalInteractive() async -> Bool {
         if let creds = SessionSecrets.importCursorFromSafeStorageInteractive() {
             cursorConnected = true
+            cursorConfigured = true
             connectionNote = L10n.tr("poller.note_cursor_local")
             _ = creds
             refreshNow()
@@ -235,6 +241,8 @@ final class UsagePoller: ObservableObject {
 
     func clearStoredSecrets() {
         SessionSecrets.clearAll()
+        cursorConnected = false
+        cursorConfigured = false
         chatGPTConnected = false
         chatGPTConfigured = false
         chatGPTNeedsReconnect = false
@@ -248,6 +256,7 @@ final class UsagePoller: ObservableObject {
         chatGPTNeedsFDA = false
         claudeNeedsFDA = false
         connectionNote = nil
+        providerWarning = nil
         refreshNow()
     }
 
@@ -297,6 +306,8 @@ final class UsagePoller: ObservableObject {
         } ?? true
 
         let cursorAuth = resolveCursorAuth()
+        cursorConfigured = !(cursorAuth.bearerToken?.isEmpty ?? true)
+            || !(cursorAuth.sessionCookie?.isEmpty ?? true)
         let chatGPTAuth = ChatGPTUsageClient.Auth(
             sessionCookie: SessionSecrets.get(.chatGPTSessionCookie),
             bearerToken: SessionSecrets.get(.chatGPTBearerOverride),
@@ -356,7 +367,17 @@ final class UsagePoller: ObservableObject {
         lastError = [next.cursor.error, next.chatGPT.error, next.claude.error]
             .compactMap { $0 }
             .first
+        updateProviderWarning()
         publishMenuBar()
+    }
+
+    private func updateProviderWarning() {
+        let failed: [String] = [
+            (cursorConfigured && !cursorConnected) ? "Cursor" : nil,
+            (chatGPTConfigured && !chatGPTConnected) ? "ChatGPT" : nil,
+            (claudeConfigured && !claudeConnected) ? "Claude" : nil
+        ].compactMap { $0 }
+        providerWarning = failed.first
     }
 
     private func fetchChatGPTIfConfigured(

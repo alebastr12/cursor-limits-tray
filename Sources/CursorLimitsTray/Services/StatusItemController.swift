@@ -66,6 +66,8 @@ final class StatusItemController: NSObject {
     private var panelHeight: CGFloat = 280
     /// Own flag — `NSPanel.isVisible` races with the global click monitor on status-item re-clicks.
     private var isPresented = false
+    private var currentSegments: [MenuBarSegment] = []
+    private var warningProvider: String?
 
     func install(poller: UsagePoller) {
         self.poller = poller
@@ -127,6 +129,7 @@ final class StatusItemController: NSObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] segments, cOK, gOK, aOK in
                 guard let self else { return }
+                self.currentSegments = segments
                 self.applyTitle(segments: segments)
                 let n = [cOK, gOK, aOK].filter { $0 }.count
                 let height: CGFloat
@@ -143,6 +146,17 @@ final class StatusItemController: NSObject {
             }
             .store(in: &cancellables)
 
+        poller.$providerWarning
+            .receive(on: RunLoop.main)
+            .sink { [weak self] warning in
+                guard let self else { return }
+                self.warningProvider = warning
+                self.applyTitle(segments: self.currentSegments)
+            }
+            .store(in: &cancellables)
+
+        currentSegments = poller.menuBarSegments
+        warningProvider = poller.providerWarning
         applyTitle(segments: poller.menuBarSegments)
         poller.start()
     }
@@ -150,19 +164,27 @@ final class StatusItemController: NSObject {
     private func applyTitle(segments: [MenuBarSegment]) {
         guard let button = statusItem?.button else { return }
 
-        let a11y = segments.isEmpty
+        let warning = warningProvider
+        var a11y = segments.isEmpty
             ? L10n.tr("a11y.menubar_empty")
             : L10n.appName + " " + segments.map {
                 L10n.tr("a11y.menubar_item", $0.provider.accessibilityName, $0.remainingPercent)
             }.joined(separator: ", ")
+        if let warning {
+            a11y += ", " + L10n.tr("a11y.menubar_warning", warning)
+        }
         button.setAccessibilityTitle(a11y)
 
-        tipText = MenuBarPresenter.tooltip(segments: segments)
+        var tip = MenuBarPresenter.tooltip(segments: segments)
+        if let warning {
+            tip = L10n.tr("tooltip.warning", warning) + "\n" + tip
+        }
+        tipText = tip
         button.toolTip = nil
         hitView?.toolTip = nil
         hitView?.frame = button.bounds
 
-        if segments.isEmpty {
+        if segments.isEmpty, warning == nil {
             button.attributedTitle = NSAttributedString(string: "")
             button.image = appGlyph()
             button.imagePosition = .imageOnly
@@ -171,12 +193,20 @@ final class StatusItemController: NSObject {
 
         button.image = nil
         button.imagePosition = .noImage
-        button.attributedTitle = composedTitle(segments: segments)
+        button.attributedTitle = composedTitle(segments: segments, warning: warning)
     }
 
-    private func composedTitle(segments: [MenuBarSegment]) -> NSAttributedString {
+    private func composedTitle(segments: [MenuBarSegment], warning: String?) -> NSAttributedString {
         let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
         let result = NSMutableAttributedString()
+
+        if warning != nil, let attachment = warningAttachment(font: font) {
+            result.append(NSAttributedString(attachment: attachment))
+            if !segments.isEmpty {
+                result.append(NSAttributedString(string: "\u{2009}", attributes: [.font: font]))
+            }
+        }
+
         let providerSeparator = NSAttributedString(
             string: " · ",
             attributes: [
@@ -216,6 +246,31 @@ final class StatusItemController: NSObject {
             ))
         }
         return result
+    }
+
+    private func warningAttachment(font: NSFont) -> NSTextAttachment? {
+        guard let symbol = NSImage(
+            systemSymbolName: "exclamationmark.triangle.fill",
+            accessibilityDescription: nil
+        ) else { return nil }
+
+        let side: CGFloat = 13
+        let size = NSSize(width: side, height: side)
+        let tinted = NSImage(size: size, flipped: false) { rect in
+            symbol.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+            NSColor.systemOrange.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+        let attachment = NSTextAttachment()
+        attachment.image = tinted
+        attachment.bounds = CGRect(
+            x: 0,
+            y: (font.capHeight - side) / 2,
+            width: side,
+            height: side
+        )
+        return attachment
     }
 
     private func providerAttachment(resource: String, color: NSColor, font: NSFont) -> NSTextAttachment? {

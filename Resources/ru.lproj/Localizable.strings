@@ -150,3 +150,7 @@
 "limit.left_count" = "осталось %d";
 "settings.show_secrets" = "Показать";
 "settings.hide_secrets" = "Скрыть";
+
+"a11y.menubar_warning" = "%@: ошибка";
+"tooltip.warning" = "⚠ %@: требуется внимание";
+"popover.provider_updated" = "обновлено %@";

@@ -157,9 +157,24 @@ private struct ProviderSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(snapshot.name)
-                    .font(.system(.title3, design: .rounded).weight(.semibold))
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(snapshot.name)
+                        .font(.system(.title3, design: .rounded).weight(.semibold))
+                    if let fetchedAt = snapshot.fetchedAt {
+                        TimelineView(.periodic(from: .now, by: 30)) { context in
+                            Text(L10n.tr(
+                                "popover.provider_updated",
+                                L10n.relativeDateFormatter.localizedString(
+                                    for: fetchedAt,
+                                    relativeTo: context.date
+                                )
+                            ))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                }
                 Spacer()
                 statusChip
             }

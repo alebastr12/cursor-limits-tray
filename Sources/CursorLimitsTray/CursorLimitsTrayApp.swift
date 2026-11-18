@@ -195,6 +195,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in
                 _ = SessionSecrets.cursorAuth()
                 await poller.refresh()
+                if let warning = poller.providerWarning {
+                    fputs(L10n.tr("tooltip.warning", warning) + "\n", stdout)
+                }
                 fputs(MenuBarPresenter.tooltip(segments: poller.menuBarSegments) + "\n", stdout)
                 fflush(stdout)
                 NSApp.terminate(nil)

@@ -30,7 +30,11 @@ enum CodexLocalAuth {
         return Credentials(accessToken: token, accountID: accountID)
     }
 
+    /// Test seam: lets integration tests point the Codex fallback at a fixture.
+    static var authFileOverride: URL?
+
     static func authFileURL() -> URL {
+        if let authFileOverride { return authFileOverride }
         if let home = ProcessInfo.processInfo.environment["CODEX_HOME"],
            !home.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return URL(fileURLWithPath: home).appendingPathComponent("auth.json")
