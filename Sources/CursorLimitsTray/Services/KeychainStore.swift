@@ -34,6 +34,22 @@ enum KeychainStore {
 
     /// - Parameter allowPrompt: app-owned items should never need UI; keep fail-closed by default.
     static func load(_ account: Account, allowPrompt: Bool = false) -> String? {
+        if case .found(let value) = loadResult(account, allowPrompt: allowPrompt) {
+            return value
+        }
+        return nil
+    }
+
+    enum LoadResult {
+        case found(String)
+        case missing
+        /// The item exists but macOS would need to ask the user (locked keychain,
+        /// changed signature). Callers must keep their "secret exists" marker.
+        case interactionRequired
+        case failed(OSStatus)
+    }
+
+    static func loadResult(_ account: Account, allowPrompt: Bool = false) -> LoadResult {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -46,8 +62,19 @@ enum KeychainStore {
         }
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess, let data = item as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        switch status {
+        case errSecSuccess:
+            guard let data = item as? Data, let value = String(data: data, encoding: .utf8) else {
+                return .missing
+            }
+            return .found(value)
+        case errSecItemNotFound:
+            return .missing
+        case errSecInteractionNotAllowed, errSecAuthFailed, errSecUserCanceled:
+            return .interactionRequired
+        default:
+            return .failed(status)
+        }
     }
 
     static func delete(_ account: Account) {

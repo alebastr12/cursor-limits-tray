@@ -5,8 +5,8 @@ struct PopoverView: View {
     @State private var showSettings = false
     @Environment(\.openWindow) private var openWindow
 
-    private var anyConnected: Bool {
-        poller.cursorConnected || poller.chatGPTConnected || poller.claudeConnected
+    private var anyConfigured: Bool {
+        poller.cursorConnected || poller.chatGPTConfigured || poller.claudeConfigured
     }
 
     var body: some View {
@@ -19,7 +19,7 @@ struct PopoverView: View {
                         banner(L10n.tr("popover.demo_banner"), color: .orange)
                     }
 
-                    if !anyConnected && !poller.snapshot.isDemo {
+                    if !anyConfigured && !poller.snapshot.isDemo {
                         emptyState
                     }
 
@@ -30,17 +30,19 @@ struct PopoverView: View {
                         )
                     }
 
-                    if poller.chatGPTConnected {
+                    if poller.chatGPTConfigured {
                         ProviderSection(
                             snapshot: poller.snapshot.chatGPT,
-                            connected: true
+                            connected: poller.chatGPTConnected,
+                            source: poller.chatGPTAutoSource,
+                            onReconnect: poller.chatGPTNeedsReconnect ? { showSettings = true } : nil
                         )
                     }
 
-                    if poller.claudeConnected {
+                    if poller.claudeConfigured {
                         ProviderSection(
                             snapshot: poller.snapshot.claude,
-                            connected: true
+                            connected: poller.claudeConnected
                         )
                     }
                 }
@@ -62,7 +64,7 @@ struct PopoverView: View {
     }
 
     private var popoverHeight: CGFloat {
-        let n = [poller.cursorConnected, poller.chatGPTConnected, poller.claudeConnected].filter { $0 }.count
+        let n = [poller.cursorConnected, poller.chatGPTConfigured, poller.claudeConfigured].filter { $0 }.count
         switch n {
         case 0: return 280
         case 1: return 360
@@ -112,8 +114,8 @@ struct PopoverView: View {
         let interval = Int(AppPreferences.pollIntervalSeconds)
         let dates = [
             poller.cursorConnected ? poller.snapshot.cursor.fetchedAt : nil,
-            poller.chatGPTConnected ? poller.snapshot.chatGPT.fetchedAt : nil,
-            poller.claudeConnected ? poller.snapshot.claude.fetchedAt : nil
+            poller.chatGPTConfigured ? poller.snapshot.chatGPT.fetchedAt : nil,
+            poller.claudeConfigured ? poller.snapshot.claude.fetchedAt : nil
         ].compactMap { $0 }
         if let t = dates.max() {
             let relative = L10n.relativeDateFormatter.localizedString(for: t, relativeTo: Date())
@@ -150,6 +152,8 @@ struct PopoverView: View {
 private struct ProviderSection: View {
     let snapshot: ProviderSnapshot
     var connected: Bool = false
+    var source: String?
+    var onReconnect: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -160,11 +164,29 @@ private struct ProviderSection: View {
                 statusChip
             }
 
-            if let error = snapshot.error, snapshot.rows.isEmpty {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
+            if connected, let source, !source.isEmpty {
+                Text(L10n.tr("popover.source", source))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let error = snapshot.error {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !snapshot.rows.isEmpty {
+                        Text(L10n.tr("popover.stale_data"))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let onReconnect {
+                        Button(L10n.tr("popover.reconnect"), action: onReconnect)
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                    }
+                }
             }
 
             ForEach(snapshot.rows) { row in
@@ -174,13 +196,23 @@ private struct ProviderSection: View {
     }
 
     private var statusChip: some View {
-        HStack(spacing: 4) {
+        let hasError = snapshot.error != nil
+        let color: Color = hasError ? (connected ? .orange : .red) : (connected ? .green : .secondary)
+        let text: String
+        if connected && !hasError {
+            text = L10n.connected
+        } else if !snapshot.status.isEmpty {
+            text = snapshot.status
+        } else {
+            text = L10n.noStatus
+        }
+        return HStack(spacing: 4) {
             Circle()
-                .fill(connected ? Color.green : Color.secondary.opacity(0.5))
+                .fill(color)
                 .frame(width: 7, height: 7)
-            Text(connected ? L10n.connected : (snapshot.status.isEmpty ? L10n.noStatus : snapshot.status))
+            Text(text)
                 .font(.caption)
-                .foregroundStyle(connected ? .green : .secondary)
+                .foregroundStyle(color)
                 .lineLimit(1)
         }
     }

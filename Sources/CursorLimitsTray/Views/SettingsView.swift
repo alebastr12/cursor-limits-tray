@@ -10,6 +10,7 @@ struct SettingsView: View {
     @State private var demoMode: Bool = AppPreferences.forceDemoMode
     @State private var openAtLogin: Bool = false
     @State private var showAdvanced = false
+    @State private var showSecrets = false
     @State private var manualChatCookie = ""
     @State private var manualCursorCookie = ""
     @State private var manualClaudeCookie = ""
@@ -54,6 +55,13 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+
+                    if let error = poller.snapshot.chatGPT.error {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 connectionRow(
@@ -146,19 +154,10 @@ struct SettingsView: View {
 
                     Text(L10n.tr("settings.cursor_cookie_hint"))
                         .font(.caption)
-                    SecureField(L10n.tr("settings.paste_value"), text: $manualCursorCookie)
+                    secretField(L10n.tr("settings.paste_value"), text: $manualCursorCookie)
 
-                    Text(L10n.tr("settings.chatgpt_cookie"))
-                        .font(.caption)
-                    TextEditor(text: $manualChatCookie)
-                        .font(.system(.caption, design: .monospaced))
-                        .frame(minHeight: 40)
-
-                    Text(L10n.tr("settings.claude_cookie"))
-                        .font(.caption)
-                    TextEditor(text: $manualClaudeCookie)
-                        .font(.system(.caption, design: .monospaced))
-                        .frame(minHeight: 40)
+                    secretField(L10n.tr("settings.chatgpt_cookie"), text: $manualChatCookie)
+                    secretField(L10n.tr("settings.claude_cookie"), text: $manualClaudeCookie)
                 }
             }
             .formStyle(.grouped)
@@ -198,7 +197,13 @@ struct SettingsView: View {
     }
 
     private var chatDetail: String {
-        if poller.chatGPTConnected { return L10n.tr("settings.chatgpt_ok") }
+        if poller.chatGPTConnected {
+            if let source = poller.chatGPTAutoSource, !source.isEmpty {
+                return L10n.tr("settings.chatgpt_source", source)
+            }
+            return L10n.tr("settings.chatgpt_ok")
+        }
+        if poller.chatGPTNeedsReconnect { return L10n.tr("settings.chatgpt_reconnect") }
         return L10n.tr("settings.chatgpt_need")
     }
 
@@ -225,6 +230,31 @@ struct SettingsView: View {
             Text(ok ? L10n.ok : "…")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(ok ? .green : .secondary)
+        }
+    }
+
+    private func secretField(_ title: String, text: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(title)
+                    .font(.caption)
+                Spacer()
+                Button(showSecrets ? L10n.tr("settings.hide_secrets") : L10n.tr("settings.show_secrets")) {
+                    showSecrets.toggle()
+                }
+                .buttonStyle(.borderless)
+                .font(.caption)
+            }
+            Group {
+                if showSecrets {
+                    TextField(L10n.tr("settings.paste_value"), text: text, axis: .vertical)
+                        .lineLimit(2...4)
+                } else {
+                    SecureField(L10n.tr("settings.paste_value"), text: text)
+                }
+            }
+            .textFieldStyle(.roundedBorder)
+            .font(.system(.caption, design: .monospaced))
         }
     }
 

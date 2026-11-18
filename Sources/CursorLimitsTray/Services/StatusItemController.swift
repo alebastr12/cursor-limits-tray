@@ -157,7 +157,7 @@ final class StatusItemController: NSObject {
             }.joined(separator: ", ")
         button.setAccessibilityTitle(a11y)
 
-        tipText = UsagePoller.menuBarTooltip(segments: segments)
+        tipText = MenuBarPresenter.tooltip(segments: segments)
         button.toolTip = nil
         hitView?.toolTip = nil
         hitView?.frame = button.bounds

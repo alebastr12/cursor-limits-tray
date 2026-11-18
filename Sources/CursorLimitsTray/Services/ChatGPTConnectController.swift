@@ -253,23 +253,11 @@ final class ChatGPTConnectController: NSObject, WKNavigationDelegate, WKUIDelega
         store.getAllCookies { [weak self] cookies in
             Task { @MainActor in
                 guard let self, !self.didEmit, !self.isClosing else { return }
-                let relevant = cookies.filter {
-                    $0.domain.contains("chatgpt.com") && $0.name.contains("next-auth.session-token")
-                }
-                guard !relevant.isEmpty else {
+                // Keep every chatgpt.com cookie: workspace routing needs `_account`
+                // and OpenAI's anti-abuse cookies, not just the NextAuth token.
+                guard let header = WebKitCookieBridge.chatGPTCookieHeader(from: cookies) else {
                     self.setStatus(L10n.tr("connect.chatgpt.no_session"))
                     return
-                }
-
-                let byName = Dictionary(uniqueKeysWithValues: relevant.map { ($0.name, $0.value) })
-                let header: String
-                if let z = byName["__Secure-next-auth.session-token.0"],
-                   let o = byName["__Secure-next-auth.session-token.1"] {
-                    header = "__Secure-next-auth.session-token.0=\(z); __Secure-next-auth.session-token.1=\(o)"
-                } else if let single = byName["__Secure-next-auth.session-token"] {
-                    header = "__Secure-next-auth.session-token=\(single)"
-                } else {
-                    header = relevant.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
                 }
 
                 self.didEmit = true

@@ -11,6 +11,11 @@ final class UsagePoller: ObservableObject {
     @Published private(set) var cursorConnected = false
     @Published private(set) var chatGPTConnected = false
     @Published private(set) var claudeConnected = false
+    /// True when ChatGPT has credentials (app Keychain or recoverable WebKit session),
+    /// even if the last fetch failed. Keeps the section visible with its error.
+    @Published private(set) var chatGPTConfigured = false
+    /// Server rejected the ChatGPT web session — user must reconnect.
+    @Published private(set) var chatGPTNeedsReconnect = false
     /// True after user connected Claude (secrets in app Keychain). Hidden from tray/popover until then.
     @Published private(set) var claudeConfigured = false
     /// Compact menu-bar: one segment per live % (all limits of connected providers). Empty if none.
@@ -31,6 +36,9 @@ final class UsagePoller: ObservableObject {
         lastError = nil
         cursorConnected = true
         chatGPTConnected = true
+        chatGPTConfigured = true
+        chatGPTNeedsReconnect = false
+        chatGPTAutoSource = nil
         claudeConnected = true
         claudeConfigured = true
         publishMenuBar()
@@ -40,6 +48,17 @@ final class UsagePoller: ObservableObject {
     private var inFlight: Task<Void, Never>?
     private var didStart = false
     private var startObserver: NSObjectProtocol?
+    /// Only the newest refresh may publish results.
+    private var refreshGeneration = 0
+    /// After an auth failure, skip the doomed web-session exchange for a while.
+    private var chatGPTAuthFailedAt: Date?
+    private static let recoveryDisabledKey = "chatgpt.recoveryDisabled"
+    /// Set by "Reset Secrets" so the WebKit cookie store cannot silently undo it.
+    /// Persisted: a relaunch must not resurrect a session the user cleared.
+    private var chatGPTRecoveryDisabled: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.recoveryDisabledKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.recoveryDisabledKey) }
+    }
 
     init() {
         startObserver = NotificationCenter.default.addObserver(
@@ -88,7 +107,8 @@ final class UsagePoller: ObservableObject {
         if !claudeConfigured {
             claudeConnected = false
         }
-        if !hasChatGPTSecrets {
+        chatGPTConfigured = hasChatGPTSecrets
+        if !chatGPTConfigured {
             chatGPTConnected = false
         }
     }
@@ -102,8 +122,12 @@ final class UsagePoller: ObservableObject {
     }
 
     func refreshNow() {
+        // Manual refresh: retry the web session even if it failed recently.
+        chatGPTAuthFailedAt = nil
+        refreshGeneration &+= 1
+        let generation = refreshGeneration
         inFlight?.cancel()
-        inFlight = Task { await refresh() }
+        inFlight = Task { await refresh(generation: generation) }
     }
 
     /// Snapshot/helper: app secrets only — never browser Safe Storage.
@@ -135,7 +159,11 @@ final class UsagePoller: ObservableObject {
                 SessionSecrets.set(header, account: .chatGPTSessionCookie)
                 chatGPTAutoSource = source
                 chatGPTNeedsFDA = false
+                chatGPTConfigured = true
                 chatGPTConnected = true
+                chatGPTNeedsReconnect = false
+                chatGPTAuthFailedAt = nil
+                chatGPTRecoveryDisabled = false
                 refreshNow()
                 return true
             case .needsFullDiskAccess:
@@ -183,8 +211,13 @@ final class UsagePoller: ObservableObject {
 
     func saveChatGPTCookie(_ header: String) {
         SessionSecrets.set(header, account: .chatGPTSessionCookie)
+        chatGPTAuthFailedAt = nil
+        chatGPTRecoveryDisabled = false
+        chatGPTNeedsReconnect = false
+        chatGPTAutoSource = nil
         // Optimistic UI: keep connected while refresh fetches rows.
-        chatGPTConnected = SessionSecrets.get(.chatGPTSessionCookie) != nil
+        chatGPTConfigured = SessionSecrets.get(.chatGPTSessionCookie) != nil
+        chatGPTConnected = chatGPTConfigured
         chatGPTNeedsFDA = false
         connectionNote = L10n.tr("poller.note_chatgpt")
         refreshNow()
@@ -203,6 +236,11 @@ final class UsagePoller: ObservableObject {
     func clearStoredSecrets() {
         SessionSecrets.clearAll()
         chatGPTConnected = false
+        chatGPTConfigured = false
+        chatGPTNeedsReconnect = false
+        chatGPTAuthFailedAt = nil
+        chatGPTRecoveryDisabled = true
+        Task { await WebKitCookieBridge.clearChatGPTCookies() }
         claudeConnected = false
         claudeConfigured = false
         chatGPTAutoSource = nil
@@ -226,195 +264,171 @@ final class UsagePoller: ObservableObject {
         }
     }
 
+    /// Entry point for snapshots/probes/timer callers.
     func refresh() async {
+        refreshGeneration &+= 1
+        await refresh(generation: refreshGeneration)
+    }
+
+    private func isCurrent(_ generation: Int) -> Bool {
+        generation == refreshGeneration && !Task.isCancelled
+    }
+
+    private func refresh(generation: Int) async {
         if AppPreferences.forceDemoMode || ProcessInfo.processInfo.arguments.contains("--demo") {
             applyDemoSnapshot()
             return
         }
 
         isRefreshing = true
-        defer { isRefreshing = false }
+        defer {
+            if generation == refreshGeneration { isRefreshing = false }
+        }
+
+        // Recover a login-window session when the app Keychain was lost (e.g. after re-signing).
+        await recoverChatGPTSecretsIfNeeded()
+        guard isCurrent(generation) else { return }
+        refreshConfiguredFlags()
+
+        let chatGPTIsConfigured = hasChatGPTSecrets
+        let claudeIsConfigured = claudeConfigured
+        let webRetryDue = chatGPTAuthFailedAt.map {
+            Date().timeIntervalSince($0) >= 300
+        } ?? true
+
+        let cursorAuth = resolveCursorAuth()
+        let chatGPTAuth = ChatGPTUsageClient.Auth(
+            sessionCookie: SessionSecrets.get(.chatGPTSessionCookie),
+            bearerToken: SessionSecrets.get(.chatGPTBearerOverride),
+            accountID: nil
+        )
+        let claudeAuth = ClaudeUsageClient.Auth(
+            sessionCookie: SessionSecrets.get(.claudeSessionCookie),
+            bearerToken: SessionSecrets.get(.claudeBearerOverride)
+        )
+
+        // All providers run concurrently; one slow service must not delay the others.
+        async let cursorFetch = ProviderFetcher.cursor(auth: cursorAuth)
+        async let chatGPTFetch = fetchChatGPTIfConfigured(
+            chatGPTIsConfigured,
+            auth: chatGPTAuth,
+            allowWeb: webRetryDue
+        )
+        async let claudeFetch = fetchClaudeIfConfigured(claudeIsConfigured, auth: claudeAuth)
+
+        let (cursorOutcome, chatGPTOutcome, claudeOutcome) = await (cursorFetch, chatGPTFetch, claudeFetch)
+        guard isCurrent(generation) else { return }
 
         var next = snapshot
         next.isDemo = false
 
-        // Cursor — memory / app Keychain only on poll (Safe Storage already done in start()).
-        do {
-            next.cursor = try await CursorUsageClient.fetch(auth: resolveCursorAuth())
-            cursorConnected = next.cursor.error == nil && !next.cursor.rows.isEmpty
-            if cursorConnected {
-                next.cursor.status = connectedStatus(base: next.cursor.status)
-            }
-        } catch {
-            cursorConnected = false
-            next.cursor = ProviderSnapshot(name: "Cursor", status: L10n.noConnection, rows: next.cursor.rows, fetchedAt: next.cursor.fetchedAt, error: humanize(error))
-        }
+        cursorConnected = apply(cursorOutcome, previous: next.cursor, into: &next.cursor)
 
-        // ChatGPT — only if authorized (app Keychain secrets). Never show unauthorized.
-        refreshConfiguredFlags()
-        if hasChatGPTSecrets {
-            do {
-                next.chatGPT = try await ChatGPTUsageClient.fetch(auth: .init(
-                    sessionCookie: SessionSecrets.get(.chatGPTSessionCookie),
-                    bearerToken: SessionSecrets.get(.chatGPTBearerOverride)
-                ))
-                chatGPTConnected = next.chatGPT.error == nil && !next.chatGPT.rows.isEmpty
-                if chatGPTConnected {
-                    let src = chatGPTAutoSource.map { " · \($0)" } ?? ""
-                    next.chatGPT.status = L10n.connectedWithDetail(src.isEmpty ? next.chatGPT.status : "\(next.chatGPT.status)\(src)")
-                } else if !next.chatGPT.rows.isEmpty {
-                    // Keep showing last rows if status/error odd but data present.
-                    chatGPTConnected = true
-                }
-            } catch {
-                // Keep prior rows + connected if secrets still present (transient API blip).
-                if !snapshot.chatGPT.rows.isEmpty {
-                    next.chatGPT = snapshot.chatGPT
-                    chatGPTConnected = true
+        if let chatGPTOutcome {
+            chatGPTConfigured = true
+            if chatGPTOutcome.webAttempted {
+                if chatGPTOutcome.webAuthFailed {
+                    // Stop hammering a session the server already rejected.
+                    chatGPTAuthFailedAt = Date()
                 } else {
-                    chatGPTConnected = false
-                    next.chatGPT = ProviderSnapshot(
-                        name: "ChatGPT",
-                        status: L10n.noConnection,
-                        rows: [],
-                        fetchedAt: next.chatGPT.fetchedAt,
-                        error: humanizeChatGPT(error)
-                    )
+                    chatGPTAuthFailedAt = nil
                 }
             }
+            chatGPTAutoSource = chatGPTOutcome.provider.source
+            chatGPTNeedsReconnect = chatGPTOutcome.provider.authFailure
+            chatGPTConnected = apply(chatGPTOutcome.provider, previous: next.chatGPT, into: &next.chatGPT)
         } else {
             chatGPTConnected = false
+            chatGPTConfigured = false
+            chatGPTAutoSource = nil
+            chatGPTNeedsReconnect = false
             next.chatGPT = ProviderSnapshot(name: "ChatGPT", status: "", rows: [], fetchedAt: nil, error: nil)
         }
 
-        if claudeConfigured {
-            do {
-                next.claude = try await ClaudeUsageClient.fetch(auth: .init(
-                    sessionCookie: SessionSecrets.get(.claudeSessionCookie),
-                    bearerToken: SessionSecrets.get(.claudeBearerOverride)
-                ))
-                claudeConnected = next.claude.error == nil && !next.claude.rows.isEmpty
-                if claudeConnected {
-                    next.claude.status = connectedStatus(base: next.claude.status)
-                }
-            } catch {
-                claudeConnected = false
-                next.claude = ProviderSnapshot(name: "Claude", status: L10n.noConnection, rows: [], fetchedAt: next.claude.fetchedAt, error: nil)
-            }
+        if let claudeOutcome {
+            claudeConnected = apply(claudeOutcome, previous: next.claude, into: &next.claude)
         } else {
             claudeConnected = false
             next.claude = ProviderSnapshot(name: "Claude", status: "", rows: [], fetchedAt: nil, error: nil)
         }
 
         snapshot = next
-        lastError = [
-            cursorConnected ? next.cursor.error : nil,
-            chatGPTConnected ? next.chatGPT.error : nil,
-            claudeConnected ? next.claude.error : nil
-        ].compactMap { $0 }.first
+        lastError = [next.cursor.error, next.chatGPT.error, next.claude.error]
+            .compactMap { $0 }
+            .first
         publishMenuBar()
     }
 
+    private func fetchChatGPTIfConfigured(
+        _ configured: Bool,
+        auth: ChatGPTUsageClient.Auth,
+        allowWeb: Bool
+    ) async -> ChatGPTOutcome? {
+        guard configured else { return nil }
+        return await ProviderFetcher.chatGPT(auth: auth, allowWeb: allowWeb)
+    }
+
+    private func fetchClaudeIfConfigured(
+        _ configured: Bool,
+        auth: ClaudeUsageClient.Auth
+    ) async -> ProviderOutcome? {
+        guard configured else { return nil }
+        return await ProviderFetcher.claude(auth: auth)
+    }
+
+    /// Applies a fetch outcome to a provider snapshot, keeping stale rows on failure.
+    /// Returns the new `connected` flag.
+    @discardableResult
+    private func apply(
+        _ outcome: ProviderOutcome,
+        previous: ProviderSnapshot,
+        into target: inout ProviderSnapshot
+    ) -> Bool {
+        if let snapshot = outcome.snapshot {
+            target = snapshot
+            let connected = snapshot.error == nil && !snapshot.rows.isEmpty
+            if connected {
+                var status = connectedStatus(base: snapshot.status)
+                if let source = outcome.source, !source.isEmpty {
+                    status += " · \\(source)"
+                }
+                target.status = status
+            }
+            return connected
+        }
+
+        target = previous
+        target.status = L10n.noConnection
+        target.error = outcome.message ?? L10n.noConnection
+        // A transient network blip keeps the last numbers in the tray; an auth
+        // failure must not pretend the data is live.
+        return !outcome.authFailure && !target.rows.isEmpty
+    }
+
+    /// Recover the app's ChatGPT cookie from its persistent WKWebView store when
+    /// the Keychain item is missing (ad-hoc re-sign wipes its ACL).
+    private func recoverChatGPTSecretsIfNeeded() async {
+        guard !chatGPTRecoveryDisabled else { return }
+        guard !hasChatGPTSecrets else { return }
+        guard let header = await WebKitCookieBridge.chatGPTSessionCookie() else { return }
+        SessionSecrets.set(header, account: .chatGPTSessionCookie)
+        chatGPTAutoSource = L10n.tr("source.webkit")
+        chatGPTAuthFailedAt = nil
+        refreshConfiguredFlags()
+    }
+
     private func publishMenuBar() {
-        // Only connected providers — one menu-bar segment per live % row (all limits).
-        var segments: [MenuBarSegment] = []
-
-        if cursorConnected {
-            let meters = remainingMeters(from: snapshot.cursor)
-            cursorSeverity = severity(remaining: meters.map(\.remaining).min(), connected: !meters.isEmpty)
-            for meter in meters {
-                segments.append(MenuBarSegment(
-                    provider: .cursor,
-                    remainingPercent: Int(meter.remaining.rounded()),
-                    severity: severity(remaining: meter.remaining, connected: true),
-                    kindLabel: LimitKindLabel.tooltipLabel(forRowTitle: meter.title)
-                ))
-            }
-        } else {
-            cursorSeverity = .unknown
-        }
-
-        if chatGPTConnected {
-            let meters = remainingMeters(from: snapshot.chatGPT)
-            chatGPTSeverity = severity(remaining: meters.map(\.remaining).min(), connected: !meters.isEmpty)
-            for meter in meters {
-                segments.append(MenuBarSegment(
-                    provider: .chatGPT,
-                    remainingPercent: Int(meter.remaining.rounded()),
-                    severity: severity(remaining: meter.remaining, connected: true),
-                    kindLabel: LimitKindLabel.tooltipLabel(forRowTitle: meter.title)
-                ))
-            }
-        } else {
-            chatGPTSeverity = .unknown
-        }
-
-        if claudeConnected {
-            let meters = remainingMeters(from: snapshot.claude)
-            claudeSeverity = severity(remaining: meters.map(\.remaining).min(), connected: !meters.isEmpty)
-            for meter in meters {
-                segments.append(MenuBarSegment(
-                    provider: .claude,
-                    remainingPercent: Int(meter.remaining.rounded()),
-                    severity: severity(remaining: meter.remaining, connected: true),
-                    kindLabel: LimitKindLabel.tooltipLabel(forRowTitle: meter.title)
-                ))
-            }
-        } else {
-            claudeSeverity = .unknown
-        }
-
-        menuBarSegments = segments
-        menuBarText = Self.plainMenuBarText(segments: segments)
-    }
-
-    /// Hover tip text: provider headers + kind/remaining lines (connected only).
-    static func menuBarTooltip(segments: [MenuBarSegment]) -> String {
-        guard !segments.isEmpty else { return L10n.tr("tooltip.empty") }
-        var lines: [String] = []
-        var lastProvider: MenuBarSegment.Provider?
-        for segment in segments {
-            if lastProvider != segment.provider {
-                lines.append(segment.provider.accessibilityName)
-                lastProvider = segment.provider
-            }
-            lines.append(L10n.tr("tooltip.line", segment.kindLabel, segment.remainingPercent))
-        }
-        return lines.joined(separator: "\n")
-    }
-
-    /// Compact plain text: `79% 88% · 67% 88%` (space within provider, · between).
-    static func plainMenuBarText(segments: [MenuBarSegment]) -> String {
-        var parts: [String] = []
-        var current: [String] = []
-        var lastProvider: MenuBarSegment.Provider?
-        for segment in segments {
-            if let last = lastProvider, last != segment.provider {
-                parts.append(current.joined(separator: " "))
-                current = []
-            }
-            current.append("\(segment.remainingPercent)%")
-            lastProvider = segment.provider
-        }
-        if !current.isEmpty { parts.append(current.joined(separator: " ")) }
-        return parts.joined(separator: " · ")
-    }
-
-    /// Every row with a usable % — remaining allowance (100 − used), clamped.
-    private func remainingMeters(from provider: ProviderSnapshot) -> [(title: String, remaining: Double)] {
-        provider.rows.compactMap { row in
-            guard let used = row.percentUsed else { return nil }
-            return (row.title, max(0, min(100, 100 - used)))
-        }
-    }
-
-    private func severity(remaining: Double?, connected: Bool) -> LimitSeverity {
-        guard connected, let remaining else { return .unknown }
-        switch remaining {
-        case ..<15: return .critical
-        case ..<35: return .low
-        default: return .ok
-        }
+        let output = MenuBarPresenter.make(
+            snapshot: snapshot,
+            cursorConnected: cursorConnected,
+            chatGPTConnected: chatGPTConnected,
+            claudeConnected: claudeConnected
+        )
+        cursorSeverity = output.cursorSeverity
+        chatGPTSeverity = output.chatGPTSeverity
+        claudeSeverity = output.claudeSeverity
+        menuBarSegments = output.segments
+        menuBarText = MenuBarPresenter.plainText(segments: output.segments)
     }
 
     private func resolveCursorAuth() -> CursorUsageClient.Auth {
@@ -433,23 +447,5 @@ final class UsagePoller: ObservableObject {
 
     private func connectedStatus(base: String) -> String {
         L10n.connectedWithDetail(base)
-    }
-
-    private func humanize(_ error: Error) -> String {
-        (error as? UsageError)?.errorDescription ?? error.localizedDescription
-    }
-
-    private func humanizeChatGPT(_ error: Error) -> String {
-        if let u = error as? UsageError, case .notConfigured = u {
-            return L10n.tr("error.connect_chatgpt")
-        }
-        return humanize(error)
-    }
-
-    private func humanizeClaude(_ error: Error) -> String {
-        if let u = error as? UsageError, case .notConfigured = u {
-            return L10n.tr("error.connect_claude")
-        }
-        return humanize(error)
     }
 }

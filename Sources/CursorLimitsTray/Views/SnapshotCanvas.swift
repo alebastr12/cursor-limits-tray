@@ -109,8 +109,9 @@ struct SnapshotCanvas: View {
                     .padding(.vertical, 8)
                     .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 8))
             }
-            if let error = snap.error, snap.rows.isEmpty, !showConnect {
+            if let error = snap.error, snap.rows.isEmpty {
                 Text(error).font(.caption).foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             ForEach(snap.rows) { row in
                 VStack(alignment: .leading, spacing: 6) {

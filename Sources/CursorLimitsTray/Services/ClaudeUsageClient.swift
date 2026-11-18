@@ -103,22 +103,26 @@ enum ClaudeUsageClient {
         return false
     }
 
-    private static func mapUsage(_ json: [String: Any], planLabel: String) -> ProviderSnapshot {
+    /// Internal for parser tests (`@testable import`).
+    static func mapUsage(_ json: [String: Any], planLabel: String) -> ProviderSnapshot {
         var rows: [LimitRow] = []
+        let limits = (json["limits"] as? [[String: Any]]) ?? []
 
-        if let five = json["five_hour"] as? [String: Any] {
-            rows.append(windowRow(id: "claude-5h", title: L10n.tr("limit.window_5h"), detail: L10n.tr("limit.session_rate"), window: five))
-        }
-        if let week = json["seven_day"] as? [String: Any] {
-            rows.append(windowRow(id: "claude-7d", title: L10n.tr("limit.week"), detail: L10n.tr("limit.weekly_rate"), window: week))
-        }
-        if let opus = json["seven_day_opus"] as? [String: Any], opus["utilization"] != nil {
-            rows.append(windowRow(id: "claude-opus", title: L10n.tr("limit.opus_week"), detail: "Model-scoped weekly", window: opus))
-        }
-        if let sonnet = json["seven_day_sonnet"] as? [String: Any], sonnet["utilization"] != nil {
-            rows.append(windowRow(id: "claude-sonnet", title: L10n.tr("limit.sonnet_week"), detail: "Model-scoped weekly", window: sonnet))
-        }
-        if let limits = json["limits"] as? [[String: Any]] {
+        // claude.ai returns both shapes; the `limits` array is authoritative when present.
+        if limits.isEmpty {
+            if let five = json["five_hour"] as? [String: Any] {
+                rows.append(windowRow(id: "claude-5h", title: L10n.tr("limit.window_5h"), detail: L10n.tr("limit.session_rate"), window: five))
+            }
+            if let week = json["seven_day"] as? [String: Any] {
+                rows.append(windowRow(id: "claude-7d", title: L10n.tr("limit.week"), detail: L10n.tr("limit.weekly_rate"), window: week))
+            }
+            if let opus = json["seven_day_opus"] as? [String: Any], opus["utilization"] != nil {
+                rows.append(windowRow(id: "claude-opus", title: L10n.tr("limit.opus_week"), detail: L10n.tr("limit.model_scoped_weekly"), window: opus))
+            }
+            if let sonnet = json["seven_day_sonnet"] as? [String: Any], sonnet["utilization"] != nil {
+                rows.append(windowRow(id: "claude-sonnet", title: L10n.tr("limit.sonnet_week"), detail: L10n.tr("limit.model_scoped_weekly"), window: sonnet))
+            }
+        } else {
             for (idx, lim) in limits.enumerated() {
                 let kind = (lim["kind"] as? String) ?? "limit-\(idx)"
                 let title: String
@@ -128,14 +132,15 @@ enum ClaudeUsageClient {
                 case "weekly_scoped": title = L10n.tr("limit.week_model")
                 default: title = kind
                 }
-                if let pct = doubleValue(lim["percent"]) ?? doubleValue(lim["utilization"]) {
+                if let raw = doubleValue(lim["percent"]) ?? doubleValue(lim["utilization"]) {
+                    let pct = min(max(raw, 0), 100)
                     rows.append(
                         LimitRow(
                             id: "claude-lim-\(idx)",
                             title: title,
                             detail: kind,
                             percentUsed: pct,
-                            remainingLabel: L10n.remainingPercent(max(0, 100 - pct)),
+                            remainingLabel: L10n.remainingPercent(100 - pct),
                             resetLabel: resetLabel(iso: lim["resets_at"] as? String)
                         )
                     )
@@ -172,8 +177,8 @@ enum ClaudeUsageClient {
     }
 
     private static func windowRow(id: String, title: String, detail: String, window: [String: Any]) -> LimitRow {
-        let used = doubleValue(window["utilization"])
-        let remaining = used.map { L10n.remainingPercent(max(0, 100 - $0)) }
+        let used = doubleValue(window["utilization"]).map { min(max($0, 0), 100) }
+        let remaining = used.map { L10n.remainingPercent(100 - $0) }
         return LimitRow(
             id: id,
             title: title,
@@ -209,12 +214,7 @@ enum ClaudeUsageClient {
     private static func getJSON(url: URL, headers: [String: String]) async throws -> Any {
         var request = URLRequest(url: url)
         for (k, v) in headers { request.setValue(v, forHTTPHeaderField: k) }
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw UsageError.badResponse }
-        guard http.statusCode == 200 else {
-            throw UsageError.http(http.statusCode, String(data: data, encoding: .utf8))
-        }
-        return try JSONSerialization.jsonObject(with: data)
+        return try await HTTPClient.json(for: request)
     }
 
     private static func getDict(url: URL, headers: [String: String]) async throws -> [String: Any] {

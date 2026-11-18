@@ -6,7 +6,9 @@ enum L10n {
     static var locale: Locale { .autoupdatingCurrent }
 
     /// Bundle whose `Localizable.strings` match the top preferred language we ship.
-    private static var stringsBundle: Bundle {
+    /// Cached: SwiftUI bodies call `tr` very often; `Bundle(path:)` per call is wasteful.
+    /// A macOS UI-language change requires an app relaunch anyway.
+    private static let stringsBundle: Bundle = {
         let available = ["en", "ru"]
         for preferred in Locale.preferredLanguages {
             let raw = preferred.lowercased()
@@ -33,7 +35,7 @@ enum L10n {
             return bundle
         }
         return .main
-    }
+    }()
 
     static func tr(_ key: String) -> String {
         NSLocalizedString(key, tableName: "Localizable", bundle: stringsBundle, value: key, comment: "")

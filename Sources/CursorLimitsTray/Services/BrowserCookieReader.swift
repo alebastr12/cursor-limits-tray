@@ -261,7 +261,8 @@ enum BrowserCookieReader {
         SELECT name, encrypted_value, value, host_key
         FROM cookies
         WHERE host_key LIKE '%chatgpt.com%'
-          AND (name LIKE '%next-auth.session-token%' OR name = '__Secure-next-auth.session-token');
+          AND (name LIKE '%next-auth.session-token%'
+               OR name IN ('_account', 'oai-did', 'oai-sc', '_puid'));
         """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else {
@@ -293,14 +294,15 @@ enum BrowserCookieReader {
 
         guard !parts.isEmpty else { return nil }
 
-        let byName = Dictionary(uniqueKeysWithValues: parts.map { ($0.name, $0.value) })
-        if let z = byName["__Secure-next-auth.session-token.0"],
-           let o = byName["__Secure-next-auth.session-token.1"] {
-            return "__Secure-next-auth.session-token.0=\(z); __Secure-next-auth.session-token.1=\(o)"
+        // Duplicate names can appear across `chatgpt.com` / `.chatgpt.com` rows;
+        // `Dictionary(uniqueKeysWithValues:)` would trap on those.
+        var byName: [String: String] = [:]
+        for part in parts where !part.value.isEmpty {
+            if let existing = byName[part.name], existing.count >= part.value.count { continue }
+            byName[part.name] = part.value
         }
-        if let single = byName["__Secure-next-auth.session-token"] {
-            return "__Secure-next-auth.session-token=\(single)"
-        }
-        return parts.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
+        return ChatGPTCookieHeader.build(
+            from: byName.map { (name: $0.key, value: $0.value) }
+        )
     }
 }

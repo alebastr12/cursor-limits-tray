@@ -11,6 +11,11 @@ let package = Package(
         .executableTarget(
             name: "CursorLimitsTray",
             path: "Sources/CursorLimitsTray"
+        ),
+        .testTarget(
+            name: "CursorLimitsTrayTests",
+            dependencies: ["CursorLimitsTray"],
+            path: "Tests/CursorLimitsTrayTests"
         )
     ]
 )

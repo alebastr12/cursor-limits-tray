@@ -10,14 +10,25 @@ enum SessionSecrets {
         if let cached = values[account], !cached.isEmpty { return cached }
         // Fresh install / never saved: skip SecItem entirely (avoids ACL password spam after re-sign).
         guard SecretsPresence.has(account) else { return nil }
+
         // App-owned Keychain only — never prompt.
-        if let loaded = KeychainStore.load(account, allowPrompt: false), !loaded.isEmpty {
-            values[account] = loaded
-            return loaded
+        switch KeychainStore.loadResult(account, allowPrompt: false) {
+        case .found(let value) where !value.isEmpty:
+            values[account] = value
+            return value
+        case .found:
+            SecretsPresence.clear(account)
+            return nil
+        case .missing:
+            // Item is really gone (fresh install / reset) → drop presence so we stop
+            // touching SecItem on every poll.
+            SecretsPresence.clear(account)
+            return nil
+        case .interactionRequired, .failed:
+            // The item still exists (locked keychain / changed ACL). Do NOT forget
+            // it: a later launch or the WKWebView bridge may still recover the session.
+            return nil
         }
-        // Interaction-required or missing after re-sign → drop presence; user reconnects once.
-        SecretsPresence.clear(account)
-        return nil
     }
 
     static func set(_ value: String, account: KeychainStore.Account) {

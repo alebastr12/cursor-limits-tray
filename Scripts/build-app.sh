@@ -35,8 +35,41 @@ for lang in en ru; do
 done
 chmod +x "$MACOS/CursorLimitsTray"
 
-# Ad-hoc sign so Keychain / local network prompts work more predictably.
-codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1 || true
+# Sign with a stable identity when available: ad-hoc re-signing changes the code
+# identity on every build, which invalidates macOS Keychain ACLs (saved sessions
+# stop loading). Override with CODESIGN_IDENTITY=...; create a local identity with
+# ./Scripts/setup-signing.sh.
+detect_identity() {
+  if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
+    printf '%s' "${CODESIGN_IDENTITY}"
+    return
+  fi
+  if security find-identity -p codesigning 2>/dev/null | grep -q '"TrayAILimits Dev"'; then
+    printf '%s' "TrayAILimits Dev"
+    return
+  fi
+  local apple
+  apple="$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Apple Development:/ {print $2; exit}')"
+  if [[ -n "${apple}" ]]; then
+    printf '%s' "${apple}"
+    return
+  fi
+  printf ''
+}
+
+IDENTITY="$(detect_identity)"
+if [[ -n "${IDENTITY}" ]]; then
+  codesign --force --deep --sign "${IDENTITY}" "$APP_DIR" >/dev/null 2>&1 || {
+    echo "warning: signing with '${IDENTITY}' failed; falling back to ad-hoc" >&2
+    codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1 || true
+    IDENTITY=""
+  }
+fi
+if [[ -z "${IDENTITY}" ]]; then
+  codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1 || true
+  echo "warning: ad-hoc signature — saved Keychain sessions may be lost after rebuilds." >&2
+  echo "         Run ./Scripts/setup-signing.sh once for a stable identity." >&2
+fi
 
 # Touch so Finder refreshes icon cache for this path
 touch "$APP_DIR"

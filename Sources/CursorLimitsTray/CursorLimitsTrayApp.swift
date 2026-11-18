@@ -51,9 +51,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let printTooltipOnly = args.contains("--print-tooltip")
+        let probeChatGPT = args.contains("--probe-chatgpt")
 
         // Install live menu-bar item unless we're only doing offline snapshot / tooltip probe.
-        if snapshotPath == nil && settingsPath == nil && !printTooltipOnly {
+        if snapshotPath == nil && settingsPath == nil && !printTooltipOnly && !probeChatGPT {
             StatusItemController.shared.install(poller: poller)
             // Default ON: register login item; prompt once if launched from a DMG.
             LoginItemBootstrap.applyOnLaunch()
@@ -105,6 +106,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        if args.contains("--probe-chatgpt") {
+            Task { @MainActor in
+                var lines: [String] = []
+                var cookie = SessionSecrets.get(.chatGPTSessionCookie)
+                if cookie == nil {
+                    cookie = await WebKitCookieBridge.chatGPTSessionCookie()
+                }
+
+                if let cookie {
+                    do {
+                        let snap = try await ChatGPTUsageClient.fetch(auth: .init(
+                            sessionCookie: cookie,
+                            bearerToken: SessionSecrets.get(.chatGPTBearerOverride),
+                            accountID: nil
+                        ))
+                        lines.append(Self.probeLine("app-session", snap))
+                    } catch {
+                        lines.append("app-session: \(error.localizedDescription)")
+                    }
+                } else {
+                    lines.append("app-session: no cookie in Keychain or WebKit store")
+                }
+
+                if let codex = CodexLocalAuth.load() {
+                    do {
+                        let snap = try await ChatGPTUsageClient.fetch(auth: .init(
+                            sessionCookie: nil,
+                            bearerToken: codex.accessToken,
+                            accountID: codex.accountID
+                        ))
+                        lines.append(Self.probeLine("codex-cli", snap))
+                    } catch {
+                        lines.append("codex-cli: \(error.localizedDescription)")
+                    }
+                } else {
+                    lines.append("codex-cli: no usable \(CodexLocalAuth.authFileURL().path)")
+                }
+
+                fputs(lines.joined(separator: "\n") + "\n", stdout)
+                fflush(stdout)
+                NSApp.terminate(nil)
+            }
+            return
+        }
+
         if args.contains("--window") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                 NotificationCenter.default.post(name: .limitsTrayOpenDebugWindow, object: nil)
@@ -141,7 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Sync probe for CI / local verify (demo is instant; live waits on refresh Task below).
             if args.contains("--demo") {
                 poller.applyDemoSnapshot()
-                fputs(UsagePoller.menuBarTooltip(segments: poller.menuBarSegments) + "\n", stdout)
+                fputs(MenuBarPresenter.tooltip(segments: poller.menuBarSegments) + "\n", stdout)
                 fflush(stdout)
                 NSApp.terminate(nil)
                 return
@@ -149,12 +195,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in
                 _ = SessionSecrets.cursorAuth()
                 await poller.refresh()
-                fputs(UsagePoller.menuBarTooltip(segments: poller.menuBarSegments) + "\n", stdout)
+                fputs(MenuBarPresenter.tooltip(segments: poller.menuBarSegments) + "\n", stdout)
                 fflush(stdout)
                 NSApp.terminate(nil)
             }
             return
         }
+    }
+
+    /// Redacted probe output — titles and percentages only, never tokens/cookies.
+    private static func probeLine(_ source: String, _ snap: ProviderSnapshot) -> String {
+        let rows = snap.rows.map { row -> String in
+            let used = row.percentUsed.map { String(format: "%.0f%%", $0) } ?? "—"
+            return "\(row.title)=\(used)"
+        }.joined(separator: ", ")
+        return "\(source): ok status=\(snap.status) rows=[\(rows)]"
     }
 
     /// Red traffic-light / Cmd+W / last window closed → stay in the menu bar.

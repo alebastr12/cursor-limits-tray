@@ -19,15 +19,13 @@ enum CursorUsageClient {
         if let cookie = auth.sessionCookie, !cookie.isEmpty {
             return try await fetchViaUsageSummary(cookie: normalizeCookie(cookie))
         }
-        throw UsageError.notConfigured("Add a Cursor session cookie in Settings, or sign in to the Cursor app on this Mac.")
+        throw UsageError.notConfigured(L10n.tr("error.connect_cursor"))
     }
 
     private static func cookieHeader(userId: String?, token: String) -> String {
         if let userId, !userId.isEmpty {
-            let encoded = "\(userId)::\(token)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "\(userId)%3A%3A\(token)"
-            // Prefer explicit %3A%3A form used by Cursor web
+            // Prefer explicit %3A%3A form used by Cursor web.
             let value = "\(userId)%3A%3A\(token)"
-            _ = encoded
             return "WorkosCursorSessionToken=\(value)"
         }
         return "WorkosCursorSessionToken=\(token)"
@@ -70,8 +68,7 @@ enum CursorUsageClient {
         var request = URLRequest(url: URL(string: "https://cursor.com/api/usage-summary")!)
         request.setValue(cookie, forHTTPHeaderField: "Cookie")
         request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X) CursorLimitsTray/0.1", forHTTPHeaderField: "User-Agent")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw UsageError.badResponse }
+        let (data, http) = try await HTTPClient.data(for: request)
         guard http.statusCode == 200 else {
             throw UsageError.http(http.statusCode, String(data: data, encoding: .utf8))
         }
@@ -87,15 +84,15 @@ enum CursorUsageClient {
         request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
         request.setValue("1", forHTTPHeaderField: "Connect-Protocol-Version")
         request.setValue("Mozilla/5.0 CursorLimitsTray/0.1", forHTTPHeaderField: "User-Agent")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw UsageError.badResponse }
+        let (data, http) = try await HTTPClient.data(for: request)
         guard http.statusCode == 200 else {
             throw UsageError.http(http.statusCode, String(data: data, encoding: .utf8))
         }
         return (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
     }
 
-    private static func mapDashboard(period: [String: Any], sand: [String: Any], plan: [String: Any]) -> ProviderSnapshot {
+    /// Internal for parser tests (`@testable import`).
+    static func mapDashboard(period: [String: Any], sand: [String: Any], plan: [String: Any]) -> ProviderSnapshot {
         let planUsage = period["planUsage"] as? [String: Any] ?? [:]
         let totalPercent = doubleValue(planUsage["totalPercentUsed"]) ?? doubleValue(sand["usagePercent"])
         let planInfo = plan["planInfo"] as? [String: Any] ?? [:]
@@ -125,8 +122,8 @@ enum CursorUsageClient {
             rows.append(
                 LimitRow(
                     id: "cursor-auto",
-                    title: "Cursor models",
-                    detail: "Auto / first-party pool",
+                    title: L10n.tr("limit.cursor_models"),
+                    detail: L10n.tr("limit.cursor_models_detail"),
                     percentUsed: auto,
                     remainingLabel: L10n.remainingPercent(max(0, 100 - auto)),
                     resetLabel: nil
@@ -137,8 +134,8 @@ enum CursorUsageClient {
             rows.append(
                 LimitRow(
                     id: "cursor-api",
-                    title: "Other models",
-                    detail: "Third-party / API pool",
+                    title: L10n.tr("limit.other_models"),
+                    detail: L10n.tr("limit.other_models_detail"),
                     percentUsed: api,
                     remainingLabel: L10n.remainingPercent(max(0, 100 - api)),
                     resetLabel: nil
@@ -146,17 +143,18 @@ enum CursorUsageClient {
             )
         }
 
-        let statusBits = [planName, isUnified ? "X Subscription" : nil].compactMap { $0 }
+        let statusBits = [planName, isUnified ? L10n.tr("limit.x_subscription") : nil].compactMap { $0 }
         return ProviderSnapshot(
             name: "Cursor",
             status: statusBits.joined(separator: " · "),
             rows: rows,
             fetchedAt: Date(),
-            error: rows.isEmpty ? "No usage fields in response" : nil
+            error: rows.isEmpty ? L10n.tr("error.no_usage_fields") : nil
         )
     }
 
-    private static func mapUsageSummary(_ json: [String: Any]) -> ProviderSnapshot {
+    /// Internal for parser tests (`@testable import`).
+    static func mapUsageSummary(_ json: [String: Any]) -> ProviderSnapshot {
         let membership = json["membershipType"] as? String ?? "Cursor"
         let individual = json["individualUsage"] as? [String: Any] ?? [:]
         let plan = individual["plan"] as? [String: Any] ?? [:]
@@ -171,8 +169,8 @@ enum CursorUsageClient {
             rows.append(
                 LimitRow(
                     id: "cursor-plan-pct",
-                    title: "Plan usage",
-                    detail: (json["autoModelSelectedDisplayMessage"] as? String) ?? "Included allowance",
+                    title: L10n.tr("limit.plan_usage"),
+                    detail: (json["autoModelSelectedDisplayMessage"] as? String) ?? L10n.tr("limit.included_allowance"),
                     percentUsed: totalPercent,
                     remainingLabel: L10n.remainingPercent(max(0, 100 - totalPercent)),
                     resetLabel: resetLabel(fromISO: cycleEnd, fromMillis: nil)
@@ -183,10 +181,10 @@ enum CursorUsageClient {
             rows.append(
                 LimitRow(
                     id: "cursor-plan-count",
-                    title: "Plan requests",
-                    detail: "used \(Int(used)) / \(Int(limit))",
+                    title: L10n.tr("limit.plan_requests"),
+                    detail: L10n.tr("limit.used_of", Int(used), Int(limit)),
                     percentUsed: pct,
-                    remainingLabel: remaining.map { "\(Int($0)) left" },
+                    remainingLabel: remaining.map { L10n.tr("limit.left_count", Int($0)) },
                     resetLabel: resetLabel(fromISO: cycleEnd, fromMillis: nil)
                 )
             )
@@ -197,7 +195,7 @@ enum CursorUsageClient {
             status: membership.capitalized,
             rows: rows,
             fetchedAt: Date(),
-            error: rows.isEmpty ? "Empty usage-summary" : nil
+            error: rows.isEmpty ? L10n.tr("error.empty_usage_summary") : nil
         )
     }
 
