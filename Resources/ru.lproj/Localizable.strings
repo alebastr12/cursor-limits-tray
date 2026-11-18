@@ -154,3 +154,15 @@
 "a11y.menubar_warning" = "%@: ошибка";
 "tooltip.warning" = "⚠ %@: требуется внимание";
 "popover.provider_updated" = "обновлено %@";
+
+"settings.disconnect_provider" = "Отключить %@";
+"settings.msg_chatgpt_disconnected" = "ChatGPT отключён.";
+"settings.msg_claude_disconnected" = "Claude отключён.";
+
+"settings.restore_sessions" = "Восстановить сохранённые сессии (%d)";
+"settings.restore_sessions_hint" = "macOS один раз спросит разрешение на доступ к Keychain после обновления приложения.";
+"settings.msg_sessions_restored" = "Восстановлено: %d.";
+"settings.msg_sessions_restore_failed" = "Не удалось восстановить. Подключите провайдера в Advanced.";
+
+"popover.keychain_permission" = "Сохранённым сессиям нужно разрешение Keychain после обновления приложения.";
+"popover.restore_sessions" = "Восстановить в Настройках…";

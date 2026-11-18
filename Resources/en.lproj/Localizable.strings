@@ -154,3 +154,15 @@
 "a11y.menubar_warning" = "%@: error";
 "tooltip.warning" = "⚠ %@ needs attention";
 "popover.provider_updated" = "updated %@";
+
+"settings.disconnect_provider" = "Disconnect %@";
+"settings.msg_chatgpt_disconnected" = "ChatGPT disconnected.";
+"settings.msg_claude_disconnected" = "Claude disconnected.";
+
+"settings.restore_sessions" = "Restore saved sessions (%d)";
+"settings.restore_sessions_hint" = "macOS will ask for Keychain permission once after the app update.";
+"settings.msg_sessions_restored" = "Restored: %d.";
+"settings.msg_sessions_restore_failed" = "Couldn’t restore. Reconnect the provider in Advanced.";
+
+"popover.keychain_permission" = "Saved sessions need Keychain permission after the app update.";
+"popover.restore_sessions" = "Restore in Settings…";

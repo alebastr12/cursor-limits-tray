@@ -5,8 +5,8 @@ struct PopoverView: View {
     @State private var showSettings = false
     @Environment(\.openWindow) private var openWindow
 
-    private var anyConfigured: Bool {
-        poller.cursorConnected || poller.chatGPTConfigured || poller.claudeConfigured
+    private var anyVisible: Bool {
+        poller.cursorVisible || poller.chatGPTVisible || poller.claudeVisible
     }
 
     var body: some View {
@@ -19,18 +19,35 @@ struct PopoverView: View {
                         banner(L10n.tr("popover.demo_banner"), color: .orange)
                     }
 
-                    if !anyConfigured && !poller.snapshot.isDemo {
+                    if poller.keychainNeedsPermission {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(L10n.tr("popover.keychain_permission"))
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Button(L10n.tr("popover.restore_sessions")) {
+                                showSettings = true
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                    }
+
+                    if !anyVisible && !poller.snapshot.isDemo {
                         emptyState
                     }
 
-                    if poller.cursorConnected {
+                    if poller.cursorVisible {
                         ProviderSection(
                             snapshot: poller.snapshot.cursor,
-                            connected: true
+                            connected: poller.cursorConnected
                         )
                     }
 
-                    if poller.chatGPTConfigured {
+                    if poller.chatGPTVisible {
                         ProviderSection(
                             snapshot: poller.snapshot.chatGPT,
                             connected: poller.chatGPTConnected,
@@ -39,7 +56,7 @@ struct PopoverView: View {
                         )
                     }
 
-                    if poller.claudeConfigured {
+                    if poller.claudeVisible {
                         ProviderSection(
                             snapshot: poller.snapshot.claude,
                             connected: poller.claudeConnected
@@ -64,7 +81,7 @@ struct PopoverView: View {
     }
 
     private var popoverHeight: CGFloat {
-        let n = [poller.cursorConnected, poller.chatGPTConfigured, poller.claudeConfigured].filter { $0 }.count
+        let n = [poller.cursorVisible, poller.chatGPTVisible, poller.claudeVisible].filter { $0 }.count
         switch n {
         case 0: return 280
         case 1: return 360
@@ -113,9 +130,9 @@ struct PopoverView: View {
     private var subtitle: String {
         let interval = Int(AppPreferences.pollIntervalSeconds)
         let dates = [
-            poller.cursorConnected ? poller.snapshot.cursor.fetchedAt : nil,
-            poller.chatGPTConfigured ? poller.snapshot.chatGPT.fetchedAt : nil,
-            poller.claudeConfigured ? poller.snapshot.claude.fetchedAt : nil
+            poller.cursorVisible ? poller.snapshot.cursor.fetchedAt : nil,
+            poller.chatGPTVisible ? poller.snapshot.chatGPT.fetchedAt : nil,
+            poller.claudeVisible ? poller.snapshot.claude.fetchedAt : nil
         ].compactMap { $0 }
         if let t = dates.max() {
             let relative = L10n.relativeDateFormatter.localizedString(for: t, relativeTo: Date())

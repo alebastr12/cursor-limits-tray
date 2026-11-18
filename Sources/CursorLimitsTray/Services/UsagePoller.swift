@@ -28,6 +28,20 @@ final class UsagePoller: ObservableObject {
     @Published private(set) var claudeSeverity: LimitSeverity = .unknown
     /// First configured provider whose last refresh failed — drives the tray warning icon.
     @Published private(set) var providerWarning: String?
+    /// Saved Keychain items exist but need a one-time ACL approval (after re-signing).
+    @Published private(set) var keychainNeedsPermission = false
+
+    var cursorVisible: Bool {
+        ProviderActivity.isVisible(id: .cursor, connected: cursorConnected, snapshot: snapshot.cursor)
+    }
+
+    var chatGPTVisible: Bool {
+        ProviderActivity.isVisible(id: .chatGPT, connected: chatGPTConnected, snapshot: snapshot.chatGPT)
+    }
+
+    var claudeVisible: Bool {
+        ProviderActivity.isVisible(id: .claude, connected: claudeConnected, snapshot: snapshot.claude)
+    }
     @Published var chatGPTNeedsFDA = false
     @Published var claudeNeedsFDA = false
     @Published var chatGPTAutoSource: String?
@@ -257,6 +271,43 @@ final class UsagePoller: ObservableObject {
         claudeNeedsFDA = false
         connectionNote = nil
         providerWarning = nil
+        snapshot = .empty
+        lastError = nil
+        publishMenuBar()
+        refreshNow()
+    }
+
+    /// Remove only ChatGPT credentials and its login-window cookies.
+    func forgetChatGPT() {
+        SessionSecrets.clear(.chatGPTSessionCookie)
+        SessionSecrets.clear(.chatGPTBearerOverride)
+        ProviderActivity.clear(.chatGPT)
+        chatGPTConnected = false
+        chatGPTConfigured = false
+        chatGPTNeedsReconnect = false
+        chatGPTAutoSource = nil
+        chatGPTAuthFailedAt = nil
+        chatGPTRecoveryDisabled = true
+        snapshot.chatGPT = ProviderSnapshot(name: "ChatGPT", status: "", rows: [], fetchedAt: nil, error: nil)
+        Task { await WebKitCookieBridge.clearChatGPTCookies() }
+        updateProviderWarning()
+        publishMenuBar()
+        refreshNow()
+    }
+
+    /// Remove only Claude credentials. The login window's cookies stay, so a
+    /// future "Connect Claude" can still auto-detect the session.
+    func forgetClaude() {
+        SessionSecrets.clear(.claudeSessionCookie)
+        SessionSecrets.clear(.claudeBearerOverride)
+        ProviderActivity.clear(.claude)
+        claudeConnected = false
+        claudeConfigured = false
+        claudeAutoSource = nil
+        claudeNeedsFDA = false
+        snapshot.claude = ProviderSnapshot(name: "Claude", status: "", rows: [], fetchedAt: nil, error: nil)
+        updateProviderWarning()
+        publishMenuBar()
         refreshNow()
     }
 
@@ -298,6 +349,7 @@ final class UsagePoller: ObservableObject {
         await recoverChatGPTSecretsIfNeeded()
         guard isCurrent(generation) else { return }
         refreshConfiguredFlags()
+        keychainNeedsPermission = !SessionSecrets.accountsNeedingPermission.isEmpty
 
         let chatGPTIsConfigured = hasChatGPTSecrets
         let claudeIsConfigured = claudeConfigured
@@ -334,6 +386,7 @@ final class UsagePoller: ObservableObject {
         next.isDemo = false
 
         cursorConnected = apply(cursorOutcome, previous: next.cursor, into: &next.cursor)
+        if cursorConnected { markSuccess(.cursor, next.cursor) }
 
         if let chatGPTOutcome {
             chatGPTConfigured = true
@@ -348,6 +401,7 @@ final class UsagePoller: ObservableObject {
             chatGPTAutoSource = chatGPTOutcome.provider.source
             chatGPTNeedsReconnect = chatGPTOutcome.provider.authFailure
             chatGPTConnected = apply(chatGPTOutcome.provider, previous: next.chatGPT, into: &next.chatGPT)
+            if chatGPTConnected { markSuccess(.chatGPT, next.chatGPT) }
         } else {
             chatGPTConnected = false
             chatGPTConfigured = false
@@ -358,6 +412,7 @@ final class UsagePoller: ObservableObject {
 
         if let claudeOutcome {
             claudeConnected = apply(claudeOutcome, previous: next.claude, into: &next.claude)
+            if claudeConnected { markSuccess(.claude, next.claude) }
         } else {
             claudeConnected = false
             next.claude = ProviderSnapshot(name: "Claude", status: "", rows: [], fetchedAt: nil, error: nil)
@@ -373,11 +428,20 @@ final class UsagePoller: ObservableObject {
 
     private func updateProviderWarning() {
         let failed: [String] = [
-            (cursorConfigured && !cursorConnected) ? "Cursor" : nil,
-            (chatGPTConfigured && !chatGPTConnected) ? "ChatGPT" : nil,
-            (claudeConfigured && !claudeConnected) ? "Claude" : nil
+            (cursorConfigured && cursorVisible && !cursorConnected) ? "Cursor" : nil,
+            (chatGPTConfigured && chatGPTVisible && !chatGPTConnected) ? "ChatGPT" : nil,
+            (claudeConfigured && claudeVisible && !claudeConnected) ? "Claude" : nil
         ].compactMap { $0 }
         providerWarning = failed.first
+    }
+
+    private func hasPercentRows(_ snapshot: ProviderSnapshot) -> Bool {
+        snapshot.rows.contains { $0.percentUsed != nil }
+    }
+
+    private func markSuccess(_ id: ProviderActivity.ID, _ snapshot: ProviderSnapshot) {
+        guard hasPercentRows(snapshot) else { return }
+        ProviderActivity.markSuccess(id)
     }
 
     private func fetchChatGPTIfConfigured(

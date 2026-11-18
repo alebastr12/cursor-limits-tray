@@ -23,6 +23,13 @@ macOS 14+, не нотаризовано (локальная подпись Tray
 - «Открывать при входе» включено по умолчанию
 - Advanced — опциональный импорт из браузера / Safe Storage (может спросить пароль Keychain)
 
+## Что нового в 0.2.19
+
+- Claude с устаревшим cookie больше не показывается в popover, если он ни разу не дал данных; тревожный треугольник для него тоже не появляется.
+- В Настройках появились кнопки **«Отключить ChatGPT / Claude»** — можно убрать ненужный провайдер вместе с сохранённым секретом.
+- После смены подписи приложения сохранённые сессии можно восстановить одной кнопкой **«Восстановить сохранённые сессии»** (macOS один раз спросит разрешение Keychain).
+- Провайдер считается видимым только при наличии реальных данных или прошлой успешной загрузки.
+
 ## Что нового в 0.2.18
 
 - Индикатор `⚠` в трее, если настроенный провайдер не смог обновиться; причина — в подсказке при наведении.
@@ -59,9 +66,9 @@ macOS 14+, не нотаризовано (локальная подпись Tray
 
 ## Установка
 
-### DMG (рекомендуется) — v0.2.18
+### DMG (рекомендуется) — v0.2.19
 
-1. Скачайте [**TrayAILimits-0.2.18.dmg**](https://github.com/alebastr12/cursor-limits-tray/releases/download/v0.2.18/TrayAILimits-0.2.18.dmg) или откройте [последний релиз](https://github.com/alebastr12/cursor-limits-tray/releases/latest).
+1. Скачайте [**TrayAILimits-0.2.19.dmg**](https://github.com/alebastr12/cursor-limits-tray/releases/download/v0.2.19/TrayAILimits-0.2.19.dmg) или откройте [последний релиз](https://github.com/alebastr12/cursor-limits-tray/releases/latest).
 2. Перетащите `TrayAILimits.app` в **Программы** (в Finder отображается как **Tray AI limits**).
 3. Первый запуск: правый клик → **Открыть** (приложение не нотаризовано, Gatekeeper спросит подтверждение).
 4. Старую `CursorLimitsTray.app` можно удалить из Программ.
@@ -77,10 +84,10 @@ cd cursor-limits-tray
 export CODESIGN_IDENTITY="TrayAILimits Dev"
 ./Scripts/package-dmg.sh 0.2.18
 ./Scripts/package-release.sh 0.2.18
-open dist/TrayAILimits-0.2.18.dmg
+open dist/TrayAILimits-0.2.19.dmg
 ```
 
-Артефакты релиза: `dist/TrayAILimits-0.2.18.dmg`, `dist/TrayAILimits-0.2.18.zip` и стабильные копии `TrayAILimits-macOS.*`.
+Артефакты релиза: `dist/TrayAILimits-0.2.19.dmg`, `dist/TrayAILimits-0.2.18.zip` и стабильные копии `TrayAILimits-macOS.*`.
 
 Нужны Xcode Command Line Tools / Swift toolchain.
 
@@ -179,7 +186,7 @@ swift test
 ## Релизы
 
 Все версии и DMG: **[Releases](https://github.com/alebastr12/cursor-limits-tray/releases)**  
-Актуальный: [v0.2.18](https://github.com/alebastr12/cursor-limits-tray/releases/tag/v0.2.18)
+Актуальный: [v0.2.19](https://github.com/alebastr12/cursor-limits-tray/releases/tag/v0.2.19)
 
 ## Лицензия
 
