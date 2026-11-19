@@ -213,3 +213,4 @@
 "update.permissions" = "Нет прав заменить приложение. Установите DMG вручную.";
 "notification.update_title" = "Tray AI limits обновлён";
 "notification.update_body" = "Версия %@ установлена. Перезапуск.";
+"settings.version_line" = "Версия %@";

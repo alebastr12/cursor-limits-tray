@@ -22,6 +22,11 @@ Native macOS menu-bar app for live **Cursor** / **ChatGPT** / **Claude** / **Ope
 - Опциональные уведомления о низком остатке (≤15%, не чаще раза в 12 часов)
 - Автообновление из GitHub Releases (можно отключить в Настройках)
 
+## Что нового в 0.2.33
+
+- В Настройках показывается текущая версия приложения.
+- Проверка автообновления: 0.2.32 должна сама обновиться до 0.2.33.
+
 ## Что нового в 0.2.32
 
 - **Автообновление**: чекбокс в Настройках, проверка GitHub Releases раз в сутки и при запуске, скачивание ZIP, проверка SHA-256, замена приложения и перезапуск.
@@ -130,9 +135,9 @@ Native macOS menu-bar app for live **Cursor** / **ChatGPT** / **Claude** / **Ope
 
 ## Установка
 
-### DMG (рекомендуется) — v0.2.32
+### DMG (рекомендуется) — v0.2.33
 
-1. Скачайте [**TrayAILimits-0.2.32.dmg**](https://github.com/alebastr12/cursor-limits-tray/releases/download/v0.2.32/TrayAILimits-0.2.32.dmg) или откройте [последний релиз](https://github.com/alebastr12/cursor-limits-tray/releases/latest).
+1. Скачайте [**TrayAILimits-0.2.33.dmg**](https://github.com/alebastr12/cursor-limits-tray/releases/download/v0.2.33/TrayAILimits-0.2.33.dmg) или откройте [последний релиз](https://github.com/alebastr12/cursor-limits-tray/releases/latest).
 2. Перетащите `TrayAILimits.app` в **Программы** (в Finder отображается как **Tray AI limits**).
 3. Первый запуск: правый клик → **Открыть** (приложение не нотаризовано, Gatekeeper спросит подтверждение).
 4. Старую `CursorLimitsTray.app` можно удалить из Программ.
@@ -146,12 +151,12 @@ git clone https://github.com/alebastr12/cursor-limits-tray.git
 cd cursor-limits-tray
 ./Scripts/setup-signing.sh                  # один раз: identity TrayAILimits Dev
 export CODESIGN_IDENTITY="TrayAILimits Dev"
-./Scripts/package-dmg.sh 0.2.32
-./Scripts/package-release.sh 0.2.32
-open dist/TrayAILimits-0.2.32.dmg
+./Scripts/package-dmg.sh 0.2.33
+./Scripts/package-release.sh 0.2.33
+open dist/TrayAILimits-0.2.33.dmg
 ```
 
-Артефакты релиза: `dist/TrayAILimits-0.2.32.dmg`, `dist/TrayAILimits-0.2.32.zip` и стабильные копии `TrayAILimits-macOS.zip`.
+Артефакты релиза: `dist/TrayAILimits-0.2.33.dmg`, `dist/TrayAILimits-0.2.33.zip` и стабильные копии `TrayAILimits-macOS.zip`.
 
 Нужны Xcode Command Line Tools / Swift toolchain.
 
@@ -268,7 +273,7 @@ swift test
 ## Релизы
 
 Все версии и DMG: **[Releases](https://github.com/alebastr12/cursor-limits-tray/releases)**  
-Актуальный: [v0.2.32](https://github.com/alebastr12/cursor-limits-tray/releases/tag/v0.2.32)
+Актуальный: [v0.2.33](https://github.com/alebastr12/cursor-limits-tray/releases/tag/v0.2.33)
 
 ## Лицензия
 

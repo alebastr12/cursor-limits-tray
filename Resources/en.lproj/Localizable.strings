@@ -213,3 +213,4 @@
 "update.permissions" = "No permission to replace the app. Install the DMG manually.";
 "notification.update_title" = "Tray AI limits updated";
 "notification.update_body" = "Version %@ installed. Restarting.";
+"settings.version_line" = "Version %@";

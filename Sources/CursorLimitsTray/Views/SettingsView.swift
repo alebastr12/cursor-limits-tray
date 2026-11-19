@@ -53,6 +53,10 @@ struct SettingsView: View {
             Text(L10n.settings)
                 .font(.title2.weight(.semibold))
 
+            Text(L10n.tr("settings.version_line", UpdateService.currentVersion))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
             Text(L10n.tr("settings.blurb"))
                 .font(.caption)
                 .foregroundStyle(.secondary)

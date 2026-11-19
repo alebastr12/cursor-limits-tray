@@ -7,7 +7,7 @@ cd "$ROOT"
 
 VERSION="${1:-}"
 if [[ -z "$VERSION" ]]; then
-  VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo "0.2.32")"
+  VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo "0.2.33")"
   VERSION="${VERSION#v}"
 fi
 
