@@ -185,3 +185,4 @@
 "settings.connect_opencode" = "Подключить OpenCode Go";
 "settings.msg_opencode_connecting" = "Подключаю OpenCode Go…";
 "settings.msg_opencode_disconnected" = "OpenCode Go отключён.";
+"settings.opencode_ok_source" = "Подключено через %@";

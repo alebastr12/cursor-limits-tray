@@ -1,4 +1,5 @@
 import XCTest
+import AppKit
 @testable import CursorLimitsTray
 
 final class MenuBarPresenterTests: XCTestCase {
@@ -96,5 +97,41 @@ final class MenuBarPresenterTests: XCTestCase {
         )
         XCTAssertTrue(output.segments.isEmpty)
         XCTAssertEqual(MenuBarPresenter.tooltip(segments: []), L10n.tr("tooltip.empty"))
+    }
+
+    func testAttributedTooltipHighlightsHeadersAndSeparatesProviders() {
+        let segments = [
+            MenuBarSegment(provider: .cursor, remainingPercent: 79, severity: .ok, kindLabel: "5h"),
+            MenuBarSegment(provider: .chatGPT, remainingPercent: 67, severity: .ok, kindLabel: "5h")
+        ]
+
+        let attributed = MenuBarPresenter.tooltipAttributed(segments: segments)
+        let text = attributed.string as NSString
+
+        XCTAssertTrue(text.hasPrefix("Cursor\n"))
+        XCTAssertTrue(text.contains("\n\nChatGPT\n"), "providers must be separated by a blank line")
+
+        let headerRange = text.range(of: "Cursor")
+        let lineRange = text.range(of: L10n.tr("tooltip.line", "5h", 79))
+        XCTAssertNotEqual(headerRange.location, NSNotFound)
+        XCTAssertNotEqual(lineRange.location, NSNotFound)
+
+        let headerColor = attributed.attribute(
+            .foregroundColor, at: headerRange.location, effectiveRange: nil
+        ) as? NSColor
+        let lineColor = attributed.attribute(
+            .foregroundColor, at: lineRange.location, effectiveRange: nil
+        ) as? NSColor
+        XCTAssertNotNil(headerColor)
+        XCTAssertNotNil(lineColor)
+        XCTAssertNotEqual(headerColor, lineColor)
+    }
+
+    func testAttributedTooltipIncludesWarning() {
+        let segments = [
+            MenuBarSegment(provider: .cursor, remainingPercent: 79, severity: .ok, kindLabel: "5h")
+        ]
+        let attributed = MenuBarPresenter.tooltipAttributed(segments: segments, warning: "WARN")
+        XCTAssertTrue(attributed.string.hasPrefix("WARN\n\nCursor\n"))
     }
 }

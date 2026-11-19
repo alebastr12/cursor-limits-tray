@@ -311,7 +311,12 @@ struct SettingsView: View {
     }
 
     private var openCodeGoDetail: String {
-        if poller.openCodeGoConnected { return L10n.tr("settings.opencode_ok") }
+        if poller.openCodeGoConnected {
+            if let source = poller.openCodeGoAutoSource, !source.isEmpty {
+                return L10n.tr("settings.opencode_ok_source", source)
+            }
+            return L10n.tr("settings.opencode_ok")
+        }
         if poller.openCodeGoConfigured { return L10n.tr("settings.opencode_bad") }
         return L10n.tr("settings.opencode_need")
     }

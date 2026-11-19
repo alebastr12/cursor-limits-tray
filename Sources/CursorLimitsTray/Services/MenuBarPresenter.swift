@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 /// Builds the compact menu-bar model from a snapshot. No UI state here.
 enum MenuBarPresenter {
@@ -60,6 +61,67 @@ enum MenuBarPresenter {
             lines.append(L10n.tr("tooltip.line", segment.kindLabel, segment.remainingPercent))
         }
         return lines.joined(separator: "\n")
+    }
+
+    /// Styled hover tip: bold provider headers, secondary lines, a blank line
+    /// between providers. The plain `tooltip` stays for CLI/accessibility.
+    static func tooltipAttributed(
+        segments: [MenuBarSegment],
+        warning: String? = nil
+    ) -> NSAttributedString {
+        let headerFont = NSFont.systemFont(ofSize: 11.5, weight: .semibold)
+        let lineFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        let result = NSMutableAttributedString()
+
+        if let warning, !warning.isEmpty {
+            result.append(NSAttributedString(
+                string: warning + "\n\n",
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+                    .foregroundColor: NSColor.systemOrange
+                ]
+            ))
+        }
+
+        guard !segments.isEmpty else {
+            result.append(NSAttributedString(
+                string: L10n.tr("tooltip.empty"),
+                attributes: [.font: lineFont, .foregroundColor: NSColor.secondaryLabelColor]
+            ))
+            return result
+        }
+
+        var lastProvider: MenuBarSegment.Provider?
+        for segment in segments {
+            if lastProvider != segment.provider {
+                if lastProvider != nil {
+                    result.append(NSAttributedString(
+                        string: "\n",
+                        attributes: [.font: lineFont]
+                    ))
+                }
+                result.append(NSAttributedString(
+                    string: segment.provider.accessibilityName + "\n",
+                    attributes: [
+                        .font: headerFont,
+                        .foregroundColor: NSColor.labelColor
+                    ]
+                ))
+                lastProvider = segment.provider
+            }
+            result.append(NSAttributedString(
+                string: L10n.tr("tooltip.line", segment.kindLabel, segment.remainingPercent) + "\n",
+                attributes: [
+                    .font: lineFont,
+                    .foregroundColor: NSColor.secondaryLabelColor
+                ]
+            ))
+        }
+
+        if result.length > 0 {
+            result.deleteCharacters(in: NSRange(location: result.length - 1, length: 1))
+        }
+        return result
     }
 
     /// Compact plain text: `79% 88% · 67% 88%` (space within provider, · between).

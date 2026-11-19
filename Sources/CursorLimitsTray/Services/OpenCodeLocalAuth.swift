@@ -32,7 +32,11 @@ enum OpenCodeLocalAuth {
         return nil
     }
 
+    /// Test seam: points `load()` at a fixture database.
+    static var databasePathOverride: String?
+
     private static func databasePaths() -> [String] {
+        if let databasePathOverride { return [databasePathOverride] }
         var paths: [String] = []
         if let xdg = ProcessInfo.processInfo.environment["XDG_DATA_HOME"], !xdg.isEmpty {
             paths.append(xdg + "/opencode/opencode.db")

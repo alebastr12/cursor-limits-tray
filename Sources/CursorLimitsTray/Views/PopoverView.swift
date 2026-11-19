@@ -25,6 +25,7 @@ struct PopoverView: View {
 
                     if poller.cursorVisible {
                         ProviderSection(
+                            provider: .cursor,
                             snapshot: poller.snapshot.cursor,
                             connected: poller.cursorConnected
                         )
@@ -32,6 +33,7 @@ struct PopoverView: View {
 
                     if poller.chatGPTVisible {
                         ProviderSection(
+                            provider: .chatGPT,
                             snapshot: poller.snapshot.chatGPT,
                             connected: poller.chatGPTConnected,
                             source: poller.chatGPTAutoSource,
@@ -41,6 +43,7 @@ struct PopoverView: View {
 
                     if poller.claudeVisible {
                         ProviderSection(
+                            provider: .claude,
                             snapshot: poller.snapshot.claude,
                             connected: poller.claudeConnected
                         )
@@ -48,6 +51,7 @@ struct PopoverView: View {
 
                     if poller.openCodeGoVisible {
                         ProviderSection(
+                            provider: .openCodeGo,
                             snapshot: poller.snapshot.openCodeGo,
                             connected: poller.openCodeGoConnected,
                             source: poller.openCodeGoAutoSource
@@ -157,6 +161,7 @@ struct PopoverView: View {
 }
 
 private struct ProviderSection: View {
+    let provider: MenuBarSegment.Provider
     let snapshot: ProviderSnapshot
     var connected: Bool = false
     var source: String?
@@ -164,7 +169,16 @@ private struct ProviderSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top) {
+            HStack(alignment: .top, spacing: 10) {
+                if let logo = ProviderIcon.template(for: provider) {
+                    Image(nsImage: logo)
+                        .resizable()
+                        .renderingMode(.template)
+                        .foregroundStyle(.primary)
+                        .frame(width: 18, height: 18)
+                        .padding(.top, 2)
+                        .accessibilityHidden(true)
+                }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(snapshot.name)
                         .font(.system(.title3, design: .rounded).weight(.semibold))

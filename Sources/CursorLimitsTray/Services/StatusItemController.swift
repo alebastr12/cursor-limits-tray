@@ -59,6 +59,7 @@ final class StatusItemController: NSObject {
     private var tipPanel: NSPanel?
     private var tipLabel: NSTextField?
     private var tipText: String = ""
+    private var tipAttributed: NSAttributedString?
     private var tipShowWork: DispatchWorkItem?
     private var poller: UsagePoller?
     private var cancellables = Set<AnyCancellable>()
@@ -174,6 +175,7 @@ final class StatusItemController: NSObject {
             tip = L10n.tr("tooltip.warning", warning) + "\n" + tip
         }
         tipText = tip
+        tipAttributed = MenuBarPresenter.tooltipAttributed(segments: segments, warning: warning)
         button.toolTip = nil
         hitView?.toolTip = nil
         hitView?.frame = button.bounds
@@ -355,15 +357,21 @@ final class StatusItemController: NSObject {
     private func showHoverTip() {
         guard !isPresented, !tipText.isEmpty, let button = statusItem?.button else { return }
         let tip = ensureTipPanel()
-        guard let tipLabel else { return }
-        tipLabel.stringValue = tipText
-        tipLabel.preferredMaxLayoutWidth = 280
-        let labelSize = tipLabel.sizeThatFits(NSSize(width: 280, height: 10_000))
+        guard let tipLabel, let attributed = tipAttributed else { return }
+
+        let maxWidth: CGFloat = 280
+        let textBounds = attributed.boundingRect(
+            with: NSSize(width: maxWidth, height: 10_000),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+        let labelSize = NSSize(width: ceil(textBounds.width), height: ceil(textBounds.height))
         let padding = NSSize(width: 20, height: 16)
         let size = NSSize(
-            width: max(120, min(300, labelSize.width + padding.width)),
+            width: max(140, min(320, labelSize.width + padding.width)),
             height: max(28, labelSize.height + padding.height)
         )
+
+        tipLabel.attributedStringValue = attributed
         tip.setContentSize(size)
         tipLabel.frame = NSRect(
             x: padding.width / 2,
@@ -429,7 +437,7 @@ final class StatusItemController: NSObject {
         label.font = .systemFont(ofSize: 11)
         label.textColor = .labelColor
         label.lineBreakMode = .byWordWrapping
-        label.maximumNumberOfLines = 12
+        label.maximumNumberOfLines = 24
         label.isSelectable = false
         root.addSubview(label)
 
