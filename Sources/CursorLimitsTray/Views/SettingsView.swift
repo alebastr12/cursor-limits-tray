@@ -11,7 +11,6 @@ struct SettingsView: View {
     @State private var openAtLogin: Bool = false
     @State private var showAdvanced = false
     @State private var showSecrets = false
-    @State private var needsPermission = 0
     @State private var manualChatCookie = ""
     @State private var manualCursorCookie = ""
     @State private var manualClaudeCookie = ""
@@ -184,22 +183,6 @@ struct SettingsView: View {
                         }
                     }
 
-                    if needsPermission > 0 {
-                        Button(L10n.tr("settings.restore_sessions", needsPermission)) {
-                            let result = SessionSecrets.restoreAllNeedingPermission()
-                            needsPermission = SessionSecrets.accountsNeedingPermission.count
-                            poller.refreshNow()
-                            statusIsError = result.restored == 0
-                            statusMessage = result.restored > 0
-                                ? L10n.tr("settings.msg_sessions_restored", result.restored)
-                                : L10n.tr("settings.msg_sessions_restore_failed")
-                        }
-                        .frame(maxWidth: .infinity)
-                        Text(L10n.tr("settings.restore_sessions_hint"))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
                     Text(L10n.tr("settings.manual_title"))
                         .font(.caption.weight(.semibold))
                         .padding(.top, 6)
@@ -240,7 +223,6 @@ struct SettingsView: View {
         .frame(width: 500, height: 620)
         .onAppear {
             openAtLogin = LoginItemBootstrap.prefersOpenAtLogin
-            needsPermission = SessionSecrets.accountsNeedingPermission.count
             manualChatCookie = SessionSecrets.get(.chatGPTSessionCookie) ?? ""
             manualCursorCookie = SessionSecrets.get(.cursorSessionCookie)
                 ?? SessionSecrets.get(.cursorBearerOverride)

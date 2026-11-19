@@ -32,10 +32,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var showPanelObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Before any Keychain read: a changed signing identity can block on an
-        // ACL prompt for items created by the previous build.
-        SessionSecrets.prepareForLaunch()
-
         let args = ProcessInfo.processInfo.arguments
         let snapshotIdx = args.firstIndex(of: "--snapshot")
         let snapshotPath = snapshotIdx.flatMap { idx -> String? in
@@ -112,14 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if args.contains("--probe-keychain") {
             Task { @MainActor in
-                SessionSecrets.prepareForLaunch()
                 var lines: [String] = []
-                let signature = UserDefaults.standard.string(forKey: "keychain.signatureID") ?? "nil"
-                lines.append("signatureID: \(signature.prefix(12))…")
-                lines.append(
-                    "needingPermission: " +
-                    SessionSecrets.accountsNeedingPermission.map(\.rawValue).joined(separator: ", ")
-                )
                 for account in KeychainStore.Account.allCases {
                     let presence = SecretsPresence.has(account)
                     let status: String
@@ -231,9 +220,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in
                 _ = SessionSecrets.cursorAuth()
                 await poller.refresh()
-                if poller.keychainNeedsPermission {
-                    fputs(L10n.tr("popover.keychain_permission") + "\n", stdout)
-                }
                 if let warning = poller.providerWarning {
                     fputs(L10n.tr("tooltip.warning", warning) + "\n", stdout)
                 }

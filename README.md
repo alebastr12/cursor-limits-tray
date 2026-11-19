@@ -17,11 +17,17 @@ macOS 14+, не нотаризовано (локальная подпись Tray
 ## Функции
 
 - Живые проценты в строке меню и подробности в popover
-- Cursor — токен с этого Mac / cookie (кэш в Keychain приложения)
+- Cursor — токен с этого Mac / cookie (хранится в защищённом хранилище приложения, без запросов пароля)
 - ChatGPT и Claude — вход в окне приложения (WKWebView), без чтения паролей браузера
 - ChatGPT: если web-сессия истекла — локальный fallback на вход Codex CLI (источник виден в popover)
 - «Открывать при входе» включено по умолчанию
 - Advanced — опциональный импорт из браузера / Safe Storage (может спросить пароль Keychain)
+
+## Что нового в 0.2.21
+
+- **Больше нет запросов пароля Keychain при запуске и подключении провайдеров.** Свои сессии переехали в отдельную service `local.cursor-limits-tray.v2` с ACL, не привязанным к подписи приложения: macOS не показывает SecurityAgent, а элементы остаются зашифрованными login Keychain.
+- Старые элементы (v1) больше не читаются — они не могут вызвать запрос. После обновления ChatGPT восстанавливается из окна входа автоматически; Cursor/Claude нужно один раз подключить заново.
+- Убраны кнопки «Восстановить сохранённые сессии»: они больше не нужны.
 
 ## Что нового в 0.2.20
 
@@ -73,9 +79,9 @@ macOS 14+, не нотаризовано (локальная подпись Tray
 
 ## Установка
 
-### DMG (рекомендуется) — v0.2.20
+### DMG (рекомендуется) — v0.2.21
 
-1. Скачайте [**TrayAILimits-0.2.20.dmg**](https://github.com/alebastr12/cursor-limits-tray/releases/download/v0.2.20/TrayAILimits-0.2.20.dmg) или откройте [последний релиз](https://github.com/alebastr12/cursor-limits-tray/releases/latest).
+1. Скачайте [**TrayAILimits-0.2.21.dmg**](https://github.com/alebastr12/cursor-limits-tray/releases/download/v0.2.21/TrayAILimits-0.2.21.dmg) или откройте [последний релиз](https://github.com/alebastr12/cursor-limits-tray/releases/latest).
 2. Перетащите `TrayAILimits.app` в **Программы** (в Finder отображается как **Tray AI limits**).
 3. Первый запуск: правый клик → **Открыть** (приложение не нотаризовано, Gatekeeper спросит подтверждение).
 4. Старую `CursorLimitsTray.app` можно удалить из Программ.
@@ -89,12 +95,12 @@ git clone https://github.com/alebastr12/cursor-limits-tray.git
 cd cursor-limits-tray
 ./Scripts/setup-signing.sh                  # один раз: identity TrayAILimits Dev
 export CODESIGN_IDENTITY="TrayAILimits Dev"
-./Scripts/package-dmg.sh 0.2.18
-./Scripts/package-release.sh 0.2.18
-open dist/TrayAILimits-0.2.20.dmg
+./Scripts/package-dmg.sh 0.2.21
+./Scripts/package-release.sh 0.2.21
+open dist/TrayAILimits-0.2.21.dmg
 ```
 
-Артефакты релиза: `dist/TrayAILimits-0.2.20.dmg`, `dist/TrayAILimits-0.2.18.zip` и стабильные копии `TrayAILimits-macOS.*`.
+Артефакты релиза: `dist/TrayAILimits-0.2.21.dmg`, `dist/TrayAILimits-0.2.21.zip` и стабильные копии `TrayAILimits-macOS.*`.
 
 Нужны Xcode Command Line Tools / Swift toolchain.
 
@@ -177,10 +183,14 @@ swift test
 
 | Действие | Диалоги |
 |----------|---------|
-| Запуск / опрос | **Нет** (нет Safe Storage; Keychain только если уже сохраняли сессию) |
+| Запуск / опрос | **Нет** (свои сессии — в Keychain с ACL без запроса пароля) |
 | Подключить ChatGPT / Claude | Нет (Keychain) |
 | Открывать при входе / копия с DMG | Без admin-цикла |
 | **Advanced** → браузер / Safe Storage | Может спросить пароль — опционально |
+
+### Почему Keychain больше не спрашивает пароль?
+
+Свои сессии хранятся в login Keychain в отдельной service `local.cursor-limits-tray.v2` с ACL, не привязанным к подписи приложения. macOS не показывает SecurityAgent, а данные остаются зашифрованными Keychain. Практический уровень доступа — как у файла `0600`: приложения этого пользователя могут их прочитать. Чужие Keychain (Cursor Safe Storage, браузеры) по-прежнему читаются только в **Advanced** и могут запросить пароль.
 
 ### Зачем Advanced?
 
@@ -201,7 +211,7 @@ swift test
 ## Релизы
 
 Все версии и DMG: **[Releases](https://github.com/alebastr12/cursor-limits-tray/releases)**  
-Актуальный: [v0.2.20](https://github.com/alebastr12/cursor-limits-tray/releases/tag/v0.2.20)
+Актуальный: [v0.2.21](https://github.com/alebastr12/cursor-limits-tray/releases/tag/v0.2.21)
 
 ## Лицензия
 

@@ -19,23 +19,6 @@ struct PopoverView: View {
                         banner(L10n.tr("popover.demo_banner"), color: .orange)
                     }
 
-                    if poller.keychainNeedsPermission {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(L10n.tr("popover.keychain_permission"))
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Button(L10n.tr("popover.restore_sessions")) {
-                                showSettings = true
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                        }
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-                    }
-
                     if !anyVisible && !poller.snapshot.isDemo {
                         emptyState
                     }

@@ -28,8 +28,6 @@ final class UsagePoller: ObservableObject {
     @Published private(set) var claudeSeverity: LimitSeverity = .unknown
     /// First configured provider whose last refresh failed — drives the tray warning icon.
     @Published private(set) var providerWarning: String?
-    /// Saved Keychain items exist but need a one-time ACL approval (after re-signing).
-    @Published private(set) var keychainNeedsPermission = false
 
     var cursorVisible: Bool {
         ProviderActivity.isVisible(id: .cursor, connected: cursorConnected, snapshot: snapshot.cursor)
@@ -349,7 +347,6 @@ final class UsagePoller: ObservableObject {
         await recoverChatGPTSecretsIfNeeded()
         guard isCurrent(generation) else { return }
         refreshConfiguredFlags()
-        keychainNeedsPermission = !SessionSecrets.accountsNeedingPermission.isEmpty
 
         let chatGPTIsConfigured = hasChatGPTSecrets
         let claudeIsConfigured = claudeConfigured

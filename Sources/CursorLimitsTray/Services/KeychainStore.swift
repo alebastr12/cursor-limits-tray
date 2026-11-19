@@ -3,7 +3,32 @@ import Security
 import LocalAuthentication
 
 enum KeychainStore {
-    private static let service = "local.cursor-limits-tray"
+    /// v2: items carry an ACL that is not bound to one code signature.
+    ///
+    /// The legacy service used the default per-app ACL, so every re-sign made
+    /// macOS ask for the login-keychain password on launch and on connect. The
+    /// v2 ACL allows any app and sets a zero prompt selector: the item stays
+    /// encrypted by the login keychain, but no SecurityAgent dialog appears.
+    /// This is the same practical access level as a 0600 file, with at-rest
+    /// encryption. Old-service items are intentionally left untouched.
+    private static let service = "local.cursor-limits-tray.v2"
+
+    private static func anyAppAccess() -> SecAccess? {
+        let description = "TrayAILimits" as CFString
+        var access: SecAccess?
+        guard SecAccessCreate(description, nil, &access) == errSecSuccess,
+              let access
+        else { return nil }
+
+        var acls: CFArray?
+        guard SecAccessCopyACLList(access, &acls) == errSecSuccess,
+              let acl = (acls as? [SecACL])?.first
+        else { return access }
+
+        // nil application list = any application; zero prompt selector = no prompt.
+        SecACLSetContents(acl, nil, description, SecKeychainPromptSelector(rawValue: 0))
+        return access
+    }
 
     enum Account: String {
         case cursorSessionCookie = "cursor.sessionCookie"
@@ -26,6 +51,9 @@ enum KeychainStore {
         attrs[kSecValueData as String] = data
         // After first unlock — no ACL prompt on every SecItemCopyMatching.
         attrs[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        if let access = anyAppAccess() {
+            attrs[kSecAttrAccess as String] = access
+        }
         let status = SecItemAdd(attrs as CFDictionary, nil)
         guard status == errSecSuccess else {
             throw KeychainError.unhandled(status)
