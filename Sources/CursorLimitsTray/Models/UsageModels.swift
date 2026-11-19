@@ -145,6 +145,7 @@ struct UsageSnapshot: Equatable {
 enum AppPreferences {
     static let pollIntervalKey = "pollIntervalSeconds"
     static let demoModeKey = "forceDemoMode"
+    static let lowBalanceNotificationsKey = "lowBalanceNotifications"
 
     static var pollIntervalSeconds: Double {
         get {
@@ -159,5 +160,10 @@ enum AppPreferences {
     static var forceDemoMode: Bool {
         get { UserDefaults.standard.bool(forKey: demoModeKey) }
         set { UserDefaults.standard.set(newValue, forKey: demoModeKey) }
+    }
+
+    static var lowBalanceNotificationsEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: lowBalanceNotificationsKey) }
+        set { UserDefaults.standard.set(newValue, forKey: lowBalanceNotificationsKey) }
     }
 }

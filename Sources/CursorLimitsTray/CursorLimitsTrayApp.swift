@@ -29,6 +29,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var showPanelObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NotificationService.shared.configure()
+
         let args = ProcessInfo.processInfo.arguments
         let snapshotIdx = args.firstIndex(of: "--snapshot")
         let snapshotPath = snapshotIdx.flatMap { idx -> String? in

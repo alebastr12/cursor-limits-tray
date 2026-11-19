@@ -34,6 +34,7 @@ struct SettingsView: View {
     @State private var pollSeconds: Double = AppPreferences.pollIntervalSeconds
     @State private var demoMode: Bool = AppPreferences.forceDemoMode
     @State private var openAtLogin: Bool = false
+    @State private var notificationsEnabled: Bool = AppPreferences.lowBalanceNotificationsEnabled
     @State private var showAdvanced = false
     @State private var showSecrets = false
     @State private var hasLegacyCursor = false
@@ -189,6 +190,23 @@ struct SettingsView: View {
                     }
                     Toggle(L10n.tr("settings.demo"), isOn: $demoMode)
                     Toggle(L10n.tr("settings.open_at_login"), isOn: $openAtLogin)
+                    Toggle(L10n.tr("settings.notifications"), isOn: Binding(
+                        get: { notificationsEnabled },
+                        set: { enabled in
+                            notificationsEnabled = enabled
+                            AppPreferences.lowBalanceNotificationsEnabled = enabled
+                            guard enabled else { return }
+                            Task { @MainActor in
+                                let granted = await NotificationService.shared.requestAuthorization()
+                                if !granted {
+                                    notificationsEnabled = false
+                                    AppPreferences.lowBalanceNotificationsEnabled = false
+                                    statusIsError = true
+                                    statusMessage = L10n.tr("settings.notifications_denied")
+                                }
+                            }
+                        }
+                    ))
                 }
 
                 DisclosureGroup(L10n.tr("settings.advanced"), isExpanded: $showAdvanced) {

@@ -510,6 +510,41 @@ final class UsagePoller: ObservableObject {
             .first
         updateProviderWarning()
         publishMenuBar()
+        checkLowBalances()
+    }
+
+    private func checkLowBalances() {
+        guard !snapshot.isDemo, AppPreferences.lowBalanceNotificationsEnabled else { return }
+
+        let providers: [(String, ProviderSnapshot)] = [
+            ("Cursor", snapshot.cursor),
+            ("ChatGPT", snapshot.chatGPT),
+            ("Claude", snapshot.claude),
+            ("OpenCode Go", snapshot.openCodeGo)
+        ]
+        let now = Date()
+
+        for (provider, providerSnapshot) in providers {
+            for row in providerSnapshot.rows {
+                guard let used = row.percentUsed else { continue }
+                let remaining = Int((100 - used).rounded())
+                let key = "lowBalanceNotified.\(provider).\(row.id)"
+
+                if remaining > LowBalanceNotifier.threshold {
+                    UserDefaults.standard.removeObject(forKey: key)
+                    continue
+                }
+
+                let last = UserDefaults.standard.object(forKey: key) as? Date
+                guard LowBalanceNotifier.shouldNotify(lastNotified: last, now: now) else { continue }
+                UserDefaults.standard.set(now, forKey: key)
+                NotificationService.shared.notifyLowBalance(
+                    provider: provider,
+                    limit: row.title,
+                    remaining: remaining
+                )
+            }
+        }
     }
 
     private func updateProviderWarning() {

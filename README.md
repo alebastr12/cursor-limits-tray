@@ -19,6 +19,14 @@ Native macOS menu-bar app for live **Cursor** / **ChatGPT** / **Claude** / **Ope
 - ChatGPT и Claude — вход в окне приложения (WKWebView), без чтения паролей браузера
 - ChatGPT: если web-сессия истекла — локальный fallback на вход Codex CLI (источник виден в popover)
 - OpenCode Go — лимиты 5ч / неделя / месяц из локального входа OpenCode или Go API key
+- Опциональные уведомления о низком остатке (≤15%, не чаще раза в 12 часов)
+
+## Что нового в 0.2.31
+
+- Опциональные **уведомления о низком остатке**: порог ≤15%, не чаще одного раза на провайдера/лимит в 12 часов. Включаются в Настройках, macOS один раз спросит разрешение.
+- Обновлён скриншот popover: логотипы провайдеров и OpenCode Go.
+- Настройки OpenCode Go показывают источник: OpenCode CLI или Go API key.
+- Тесты: **45**.
 
 ## Что нового в 0.2.30
 
@@ -113,9 +121,9 @@ Native macOS menu-bar app for live **Cursor** / **ChatGPT** / **Claude** / **Ope
 
 ## Установка
 
-### DMG (рекомендуется) — v0.2.30
+### DMG (рекомендуется) — v0.2.31
 
-1. Скачайте [**TrayAILimits-0.2.30.dmg**](https://github.com/alebastr12/cursor-limits-tray/releases/download/v0.2.30/TrayAILimits-0.2.30.dmg) или откройте [последний релиз](https://github.com/alebastr12/cursor-limits-tray/releases/latest).
+1. Скачайте [**TrayAILimits-0.2.31.dmg**](https://github.com/alebastr12/cursor-limits-tray/releases/download/v0.2.31/TrayAILimits-0.2.31.dmg) или откройте [последний релиз](https://github.com/alebastr12/cursor-limits-tray/releases/latest).
 2. Перетащите `TrayAILimits.app` в **Программы** (в Finder отображается как **Tray AI limits**).
 3. Первый запуск: правый клик → **Открыть** (приложение не нотаризовано, Gatekeeper спросит подтверждение).
 4. Старую `CursorLimitsTray.app` можно удалить из Программ.
@@ -129,12 +137,12 @@ git clone https://github.com/alebastr12/cursor-limits-tray.git
 cd cursor-limits-tray
 ./Scripts/setup-signing.sh                  # один раз: identity TrayAILimits Dev
 export CODESIGN_IDENTITY="TrayAILimits Dev"
-./Scripts/package-dmg.sh 0.2.30
-./Scripts/package-release.sh 0.2.30
-open dist/TrayAILimits-0.2.30.dmg
+./Scripts/package-dmg.sh 0.2.31
+./Scripts/package-release.sh 0.2.31
+open dist/TrayAILimits-0.2.31.dmg
 ```
 
-Артефакты релиза: `dist/TrayAILimits-0.2.30.dmg`, `dist/TrayAILimits-0.2.30.zip` и стабильные копии `TrayAILimits-macOS.*`.
+Артефакты релиза: `dist/TrayAILimits-0.2.31.dmg`, `dist/TrayAILimits-0.2.31.zip` и стабильные копии `TrayAILimits-macOS.zip`.
 
 Нужны Xcode Command Line Tools / Swift toolchain.
 
@@ -194,6 +202,7 @@ swift test
 - Интервал опроса (по умолчанию 45 с)
 - Демо-данные
 - Открывать при входе
+- Уведомления о низком остатке (опционально)
 - **Advanced** — ручные cookie, OpenCode Go API key и импорт из браузера (опционально)
 - **Сбросить секреты** — очистить сохранённые токены
 
@@ -244,12 +253,12 @@ swift test
 
 ### Gatekeeper / «не удаётся открыть»
 
-Правый клик по приложению → **Открыть**. Локальная подпись (`TrayAILimits Dev` / Apple Development или ad-hoc), без Apple notarization. Проверить: `codesign -dvv dist/TrayAILimits.app`.
+Правый клик по приложению → **Открыть**. Локальная подпись (`TrayAILimits Dev` / Apple Development или ad-hoc), без Apple notarization. Apple Developer ID не требуется. Проверить: `codesign -dvv dist/TrayAILimits.app`.
 
 ## Релизы
 
 Все версии и DMG: **[Releases](https://github.com/alebastr12/cursor-limits-tray/releases)**  
-Актуальный: [v0.2.30](https://github.com/alebastr12/cursor-limits-tray/releases/tag/v0.2.30)
+Актуальный: [v0.2.31](https://github.com/alebastr12/cursor-limits-tray/releases/tag/v0.2.31)
 
 ## Лицензия
 

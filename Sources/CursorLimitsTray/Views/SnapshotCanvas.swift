@@ -39,9 +39,10 @@ struct SnapshotCanvas: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
                 }
-                canvasProvider(snapshot.cursor, connected: !snapshot.cursor.rows.isEmpty)
+                canvasProvider(snapshot.cursor, provider: .cursor, connected: !snapshot.cursor.rows.isEmpty)
                 canvasProvider(
                     snapshot.chatGPT,
+                    provider: .chatGPT,
                     connected: !snapshot.chatGPT.rows.isEmpty,
                     showConnect: showConnectChatGPT && snapshot.chatGPT.rows.isEmpty,
                     connectLabel: L10n.tr("settings.connect_chatgpt")
@@ -49,6 +50,7 @@ struct SnapshotCanvas: View {
                 if snapshot.isDemo || !snapshot.claude.rows.isEmpty {
                     canvasProvider(
                         snapshot.claude,
+                        provider: .claude,
                         connected: !snapshot.claude.rows.isEmpty,
                         showConnect: false,
                         connectLabel: L10n.tr("settings.connect_claude")
@@ -57,6 +59,7 @@ struct SnapshotCanvas: View {
                 if snapshot.isDemo || !snapshot.openCodeGo.rows.isEmpty {
                     canvasProvider(
                         snapshot.openCodeGo,
+                        provider: .openCodeGo,
                         connected: !snapshot.openCodeGo.rows.isEmpty,
                         showConnect: false,
                         connectLabel: L10n.tr("settings.connect_opencode")
@@ -77,7 +80,7 @@ struct SnapshotCanvas: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
         }
-        .frame(width: 360, height: 640)
+        .frame(width: 360, height: 1100)
         .background(
             LinearGradient(
                 colors: [
@@ -92,13 +95,21 @@ struct SnapshotCanvas: View {
 
     private func canvasProvider(
         _ snap: ProviderSnapshot,
+        provider: MenuBarSegment.Provider,
         connected: Bool,
         showConnect: Bool = false,
         connectLabel: String? = nil
     ) -> some View {
         let connectLabel = connectLabel ?? L10n.tr("common.connect")
         return VStack(alignment: .leading, spacing: 10) {
-            HStack {
+            HStack(spacing: 8) {
+                if let logo = ProviderIcon.template(for: provider) {
+                    Image(nsImage: logo)
+                        .resizable()
+                        .renderingMode(.template)
+                        .foregroundStyle(.primary)
+                        .frame(width: 18, height: 18)
+                }
                 Text(snap.name)
                     .font(.system(.title3, design: .rounded).weight(.semibold))
                 Spacer()
