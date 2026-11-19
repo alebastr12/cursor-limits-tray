@@ -30,9 +30,13 @@ enum WebKitCookieBridge {
     /// Explicit "Reset Secrets" must also end the login-window session,
     /// otherwise the poller would immediately recover it.
     static func clearChatGPTCookies() async {
+        await clearCookies(domainSuffix: "chatgpt.com")
+    }
+
+    static func clearCookies(domainSuffix: String) async {
         let store = WKWebsiteDataStore.default().httpCookieStore
         let cookies = await store.allCookies()
-        for cookie in cookies where cookie.domain.hasSuffix("chatgpt.com") {
+        for cookie in cookies where cookie.domain.hasSuffix(domainSuffix) {
             await store.delete(cookie)
         }
     }

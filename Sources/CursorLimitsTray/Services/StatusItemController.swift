@@ -66,6 +66,8 @@ final class StatusItemController: NSObject {
     private var panelHeight: CGFloat = 280
     /// Own flag — `NSPanel.isVisible` races with the global click monitor on status-item re-clicks.
     private var isPresented = false
+    /// Set while a modal confirmation is up, so its clicks do not close the panel.
+    var isModalPresented = false
     private var currentSegments: [MenuBarSegment] = []
     private var warningProvider: String?
 
@@ -103,7 +105,7 @@ final class StatusItemController: NSObject {
         hosting = controller
 
         let panel = TrayStatusPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: panelHeight),
+            contentRect: NSRect(x: 0, y: 0, width: PopoverLayout.width, height: panelHeight),
             styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
             backing: .buffered,
             defer: true
@@ -125,21 +127,13 @@ final class StatusItemController: NSObject {
         self.panel = panel
 
         poller.$menuBarSegments
-            .combineLatest(poller.$cursorConnected, poller.$chatGPTConnected, poller.$claudeConnected)
+            .combineLatest(poller.$visibleProviderCount)
             .receive(on: RunLoop.main)
-            .sink { [weak self] segments, cOK, gOK, aOK in
+            .sink { [weak self] segments, visibleCount in
                 guard let self else { return }
                 self.currentSegments = segments
                 self.applyTitle(segments: segments)
-                let n = [cOK, gOK, aOK].filter { $0 }.count
-                let height: CGFloat
-                switch n {
-                case 0: height = 280
-                case 1: height = 360
-                case 2: height = 480
-                default: height = 560
-                }
-                self.panelHeight = height
+                self.panelHeight = PopoverLayout.height(forVisibleProviders: visibleCount)
                 if self.isPresented {
                     self.positionVisiblePanel()
                 }
@@ -460,7 +454,7 @@ final class StatusItemController: NSObject {
 
         removeMonitor()
         eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            guard let self, self.isPresented else { return }
+            guard let self, self.isPresented, !self.isModalPresented else { return }
             if self.isClickOnStatusItem(event) { return }
             if let panel = self.panel, event.windowNumber == panel.windowNumber { return }
             self.hidePanel()
@@ -519,7 +513,7 @@ final class StatusItemController: NSObject {
 
     private func positionVisiblePanel() {
         guard let panel, let button = statusItem?.button else { return }
-        let size = NSSize(width: 360, height: panelHeight)
+        let size = NSSize(width: PopoverLayout.width, height: panelHeight)
         hosting?.view.frame = NSRect(origin: .zero, size: size)
         panel.setContentSize(size)
         positionPanel(panel, relativeTo: button)
@@ -527,7 +521,7 @@ final class StatusItemController: NSObject {
     }
 
     private func positionPanel(_ panel: NSPanel, relativeTo button: NSStatusBarButton) {
-        let size = NSSize(width: 360, height: panelHeight)
+        let size = NSSize(width: PopoverLayout.width, height: panelHeight)
         var anchor: NSRect?
 
         if let buttonWindow = button.window ?? button.superview?.window {

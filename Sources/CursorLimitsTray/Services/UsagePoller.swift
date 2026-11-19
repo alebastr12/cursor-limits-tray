@@ -28,6 +28,8 @@ final class UsagePoller: ObservableObject {
     @Published private(set) var claudeSeverity: LimitSeverity = .unknown
     /// First configured provider whose last refresh failed — drives the tray warning icon.
     @Published private(set) var providerWarning: String?
+    /// Number of provider sections currently visible (drives popover/panel height).
+    @Published private(set) var visibleProviderCount = 0
 
     var cursorVisible: Bool {
         ProviderActivity.isVisible(id: .cursor, connected: cursorConnected, snapshot: snapshot.cursor)
@@ -293,8 +295,7 @@ final class UsagePoller: ObservableObject {
         refreshNow()
     }
 
-    /// Remove only Claude credentials. The login window's cookies stay, so a
-    /// future "Connect Claude" can still auto-detect the session.
+    /// Remove only Claude credentials and its login-window cookies.
     func forgetClaude() {
         SessionSecrets.clear(.claudeSessionCookie)
         SessionSecrets.clear(.claudeBearerOverride)
@@ -304,6 +305,20 @@ final class UsagePoller: ObservableObject {
         claudeAutoSource = nil
         claudeNeedsFDA = false
         snapshot.claude = ProviderSnapshot(name: "Claude", status: "", rows: [], fetchedAt: nil, error: nil)
+        Task { await WebKitCookieBridge.clearCookies(domainSuffix: "claude.ai") }
+        updateProviderWarning()
+        publishMenuBar()
+        refreshNow()
+    }
+
+    /// Remove the Cursor token/cookie saved by the app.
+    func forgetCursor() {
+        SessionSecrets.clear(.cursorSessionCookie)
+        SessionSecrets.clear(.cursorBearerOverride)
+        ProviderActivity.clear(.cursor)
+        cursorConnected = false
+        cursorConfigured = false
+        snapshot.cursor = ProviderSnapshot(name: "Cursor", status: "", rows: [], fetchedAt: nil, error: nil)
         updateProviderWarning()
         publishMenuBar()
         refreshNow()
@@ -511,6 +526,7 @@ final class UsagePoller: ObservableObject {
         claudeSeverity = output.claudeSeverity
         menuBarSegments = output.segments
         menuBarText = MenuBarPresenter.plainText(segments: output.segments)
+        visibleProviderCount = [cursorVisible, chatGPTVisible, claudeVisible].filter { $0 }.count
     }
 
     private func resolveCursorAuth() -> CursorUsageClient.Auth {

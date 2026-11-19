@@ -1,4 +1,28 @@
 import SwiftUI
+import AppKit
+
+private enum RemovableProvider {
+    case cursor
+    case chatGPT
+    case claude
+
+    var name: String {
+        switch self {
+        case .cursor: return "Cursor"
+        case .chatGPT: return "ChatGPT"
+        case .claude: return "Claude"
+        }
+    }
+
+    @MainActor
+    func remove(from poller: UsagePoller) {
+        switch self {
+        case .cursor: poller.forgetCursor()
+        case .chatGPT: poller.forgetChatGPT()
+        case .claude: poller.forgetClaude()
+        }
+    }
+}
 
 struct PopoverView: View {
     @ObservedObject var poller: UsagePoller
@@ -26,7 +50,8 @@ struct PopoverView: View {
                     if poller.cursorVisible {
                         ProviderSection(
                             snapshot: poller.snapshot.cursor,
-                            connected: poller.cursorConnected
+                            connected: poller.cursorConnected,
+                            onRemove: { confirmRemove(.cursor) }
                         )
                     }
 
@@ -35,14 +60,16 @@ struct PopoverView: View {
                             snapshot: poller.snapshot.chatGPT,
                             connected: poller.chatGPTConnected,
                             source: poller.chatGPTAutoSource,
-                            onReconnect: poller.chatGPTNeedsReconnect ? { showSettings = true } : nil
+                            onReconnect: poller.chatGPTNeedsReconnect ? { showSettings = true } : nil,
+                            onRemove: { confirmRemove(.chatGPT) }
                         )
                     }
 
                     if poller.claudeVisible {
                         ProviderSection(
                             snapshot: poller.snapshot.claude,
-                            connected: poller.claudeConnected
+                            connected: poller.claudeConnected,
+                            onRemove: { confirmRemove(.claude) }
                         )
                     }
                 }
@@ -51,7 +78,7 @@ struct PopoverView: View {
             Divider().opacity(0.35)
             footer
         }
-        .frame(width: 360, height: popoverHeight)
+        .frame(width: PopoverLayout.width, height: popoverHeight)
         .background(WindowBackground())
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .sheet(isPresented: $showSettings) {
@@ -64,12 +91,26 @@ struct PopoverView: View {
     }
 
     private var popoverHeight: CGFloat {
-        let n = [poller.cursorVisible, poller.chatGPTVisible, poller.claudeVisible].filter { $0 }.count
-        switch n {
-        case 0: return 280
-        case 1: return 360
-        case 2: return 480
-        default: return 560
+        PopoverLayout.height(forVisibleProviders: poller.visibleProviderCount)
+    }
+
+    private func confirmRemove(_ provider: RemovableProvider) {
+        StatusItemController.shared.isModalPresented = true
+        defer { StatusItemController.shared.isModalPresented = false }
+
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = L10n.tr("popover.remove_title", provider.name)
+        alert.informativeText = L10n.tr("popover.remove_message", provider.name)
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L10n.tr("popover.remove_action"))
+        alert.addButton(withTitle: L10n.tr("common.cancel"))
+        alert.buttons.first?.hasDestructiveAction = true
+        alert.window.level = .mainMenu
+        alert.window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            provider.remove(from: poller)
         }
     }
 
@@ -154,6 +195,7 @@ private struct ProviderSection: View {
     var connected: Bool = false
     var source: String?
     var onReconnect: (() -> Void)?
+    var onRemove: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -176,7 +218,19 @@ private struct ProviderSection: View {
                     }
                 }
                 Spacer()
-                statusChip
+                HStack(spacing: 6) {
+                    statusChip
+                    if let onRemove {
+                        Button(action: onRemove) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                        .help(L10n.tr("popover.remove_help", snapshot.name))
+                        .accessibilityLabel(L10n.tr("popover.remove_help", snapshot.name))
+                    }
+                }
             }
 
             if connected, let source, !source.isEmpty {

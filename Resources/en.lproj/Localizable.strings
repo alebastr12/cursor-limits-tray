@@ -159,4 +159,8 @@
 "settings.msg_chatgpt_disconnected" = "ChatGPT disconnected.";
 "settings.msg_claude_disconnected" = "Claude disconnected.";
 
-
+"common.cancel" = "Cancel";
+"popover.remove_title" = "Disconnect %@?";
+"popover.remove_message" = "The saved %@ session will be deleted. You can reconnect it later in Settings.";
+"popover.remove_action" = "Disconnect";
+"popover.remove_help" = "Disconnect %@";

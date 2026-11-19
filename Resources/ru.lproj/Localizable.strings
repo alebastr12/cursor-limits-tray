@@ -159,4 +159,8 @@
 "settings.msg_chatgpt_disconnected" = "ChatGPT отключён.";
 "settings.msg_claude_disconnected" = "Claude отключён.";
 
-
+"common.cancel" = "Отмена";
+"popover.remove_title" = "Отключить %@?";
+"popover.remove_message" = "Сохранённая сессия %@ будет удалена. Подключить заново можно в Настройках.";
+"popover.remove_action" = "Отключить";
+"popover.remove_help" = "Отключить %@";
