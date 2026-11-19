@@ -223,7 +223,12 @@ final class StatusItemController: NSObject {
 
             let color = nsColor(segment.severity)
             if isNewProvider,
-               let icon = providerAttachment(resource: segment.provider.resourceName, color: color, font: font) {
+               let icon = providerAttachment(
+                   resource: segment.provider.resourceName,
+                   fallbackSymbol: segment.provider.fallbackSymbolName,
+                   color: color,
+                   font: font
+               ) {
                 result.append(NSAttributedString(attachment: icon))
                 result.append(NSAttributedString(
                     string: "\u{200A}",
@@ -267,8 +272,19 @@ final class StatusItemController: NSObject {
         return attachment
     }
 
-    private func providerAttachment(resource: String, color: NSColor, font: NSFont) -> NSTextAttachment? {
-        guard let base = loadProviderTemplate(named: resource) else { return nil }
+    private func providerAttachment(
+        resource: String,
+        fallbackSymbol: String?,
+        color: NSColor,
+        font: NSFont
+    ) -> NSTextAttachment? {
+        let base = loadProviderTemplate(named: resource) ?? fallbackSymbol.flatMap { name in
+            let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
+            image?.isTemplate = true
+            image?.size = NSSize(width: 15, height: 15)
+            return image
+        }
+        guard let base else { return nil }
         let side: CGFloat = 15
         let size = NSSize(width: side, height: side)
         let tinted = NSImage(size: size, flipped: false) { rect in

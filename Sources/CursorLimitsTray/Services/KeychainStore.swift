@@ -37,6 +37,7 @@ enum KeychainStore {
         case chatGPTBearerOverride = "chatgpt.bearerOverride"
         case claudeSessionCookie = "claude.sessionCookie"
         case claudeBearerOverride = "claude.bearerOverride"
+        case openCodeGoAPIKey = "opencodego.apiKey"
     }
 
     static func save(_ value: String, account: Account) throws {

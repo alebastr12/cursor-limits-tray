@@ -170,3 +170,18 @@
 "settings.remove_action" = "Disconnect";
 "settings.remove_help" = "Disconnect %@";
 "settings.msg_cursor_disconnected" = "Cursor disconnected.";
+
+"limit.rolling_5h" = "5-hour rolling";
+"source.opencode_cli" = "OpenCode CLI";
+"source.opencode_key" = "OpenCode Go key";
+"error.opencode_auth" = "OpenCode credential expired — open OpenCode or paste a Go API key.";
+"error.opencode_key_missing" = "No OpenCode Go key. Sign in to OpenCode or paste a Go API key.";
+"error.opencode_no_windows" = "OpenCode Go returned no usage windows.";
+"settings.opencode_ok" = "Connected (OpenCode)";
+"settings.opencode_bad" = "Configured · no connection";
+"settings.opencode_need" = "Sign in to OpenCode or paste a Go API key";
+"settings.opencode_key" = "OpenCode Go API key";
+"settings.opencode_key_hint" = "If empty, the key is taken from the local OpenCode login.";
+"settings.connect_opencode" = "Connect OpenCode Go";
+"settings.msg_opencode_connecting" = "Connecting OpenCode Go…";
+"settings.msg_opencode_disconnected" = "OpenCode Go disconnected.";

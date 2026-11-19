@@ -54,6 +54,14 @@ struct SnapshotCanvas: View {
                         connectLabel: L10n.tr("settings.connect_claude")
                     )
                 }
+                if snapshot.isDemo || !snapshot.openCodeGo.rows.isEmpty {
+                    canvasProvider(
+                        snapshot.openCodeGo,
+                        connected: !snapshot.openCodeGo.rows.isEmpty,
+                        showConnect: false,
+                        connectLabel: L10n.tr("settings.connect_opencode")
+                    )
+                }
             }
             .padding(16)
 
@@ -69,7 +77,7 @@ struct SnapshotCanvas: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
         }
-        .frame(width: 360, height: 560)
+        .frame(width: 360, height: 640)
         .background(
             LinearGradient(
                 colors: [

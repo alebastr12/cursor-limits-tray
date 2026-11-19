@@ -136,6 +136,6 @@ enum SessionSecrets {
 
 extension KeychainStore.Account: CaseIterable {
     static var allCases: [KeychainStore.Account] {
-        [.cursorSessionCookie, .cursorBearerOverride, .chatGPTSessionCookie, .chatGPTBearerOverride, .claudeSessionCookie, .claudeBearerOverride]
+        [.cursorSessionCookie, .cursorBearerOverride, .chatGPTSessionCookie, .chatGPTBearerOverride, .claudeSessionCookie, .claudeBearerOverride, .openCodeGoAPIKey]
     }
 }

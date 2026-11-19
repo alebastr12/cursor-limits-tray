@@ -6,6 +6,7 @@ struct MenuBarSegment: Equatable {
         case cursor
         case chatGPT
         case claude
+        case openCodeGo
 
         /// Template PNG in Resources/MenuBarProviders (not SF Symbol).
         var resourceName: String {
@@ -13,6 +14,15 @@ struct MenuBarSegment: Equatable {
             case .cursor: return "ProviderCursor"
             case .chatGPT: return "ProviderChatGPT"
             case .claude: return "ProviderClaude"
+            case .openCodeGo: return "ProviderOpenCode"
+            }
+        }
+
+        /// Used when the template PNG is missing.
+        var fallbackSymbolName: String? {
+            switch self {
+            case .openCodeGo: return "chevron.left.forwardslash.chevron.right"
+            default: return nil
             }
         }
 
@@ -21,6 +31,7 @@ struct MenuBarSegment: Equatable {
             case .cursor: return "Cursor"
             case .chatGPT: return "ChatGPT"
             case .claude: return "Claude"
+            case .openCodeGo: return "OpenCode Go"
             }
         }
     }

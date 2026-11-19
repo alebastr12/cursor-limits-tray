@@ -7,13 +7,15 @@ enum MenuBarPresenter {
         var cursorSeverity: LimitSeverity
         var chatGPTSeverity: LimitSeverity
         var claudeSeverity: LimitSeverity
+        var openCodeGoSeverity: LimitSeverity
     }
 
     static func make(
         snapshot: UsageSnapshot,
         cursorConnected: Bool,
         chatGPTConnected: Bool,
-        claudeConnected: Bool
+        claudeConnected: Bool,
+        openCodeGoConnected: Bool
     ) -> Output {
         var segments: [MenuBarSegment] = []
 
@@ -34,12 +36,14 @@ enum MenuBarPresenter {
         let cursor = append(.cursor, snapshot.cursor, isConnected: cursorConnected)
         let chatGPT = append(.chatGPT, snapshot.chatGPT, isConnected: chatGPTConnected)
         let claude = append(.claude, snapshot.claude, isConnected: claudeConnected)
+        let openCodeGo = append(.openCodeGo, snapshot.openCodeGo, isConnected: openCodeGoConnected)
 
         return Output(
             segments: segments,
             cursorSeverity: cursor,
             chatGPTSeverity: chatGPT,
-            claudeSeverity: claude
+            claudeSeverity: claude,
+            openCodeGoSeverity: openCodeGo
         )
     }
 

@@ -50,6 +50,14 @@ enum ProviderFetcher {
         }
     }
 
+    static func openCodeGo(auth: OpenCodeGoUsageClient.Auth) async -> ProviderOutcome {
+        do {
+            return .success(try await OpenCodeGoUsageClient.fetch(auth: auth))
+        } catch {
+            return .failure(error)
+        }
+    }
+
     /// Web session first; on any failure fall back to the local Codex login.
     /// The Codex token is re-read on every poll and never persisted by the app.
     static func chatGPT(auth: ChatGPTUsageClient.Auth, allowWeb: Bool) async -> ChatGPTOutcome {

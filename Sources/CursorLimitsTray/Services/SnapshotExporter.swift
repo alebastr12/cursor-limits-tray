@@ -6,7 +6,7 @@ enum SnapshotExporter {
     static func writeDemoMain(to path: String) {
         write(
             view: SnapshotCanvas(snapshot: .demo, showConnectChatGPT: false, showConnectClaude: false),
-            size: NSSize(width: 360, height: 560),
+            size: NSSize(width: 360, height: 640),
             to: path
         )
     }
@@ -29,7 +29,7 @@ enum SnapshotExporter {
                 showConnectChatGPT: showConnectG,
                 showConnectClaude: showConnectA
             ),
-            size: NSSize(width: 360, height: 560),
+            size: NSSize(width: 360, height: 640),
             to: path
         )
     }

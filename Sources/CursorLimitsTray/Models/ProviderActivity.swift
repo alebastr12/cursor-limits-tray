@@ -11,6 +11,7 @@ enum ProviderActivity {
         case cursor
         case chatGPT = "chatgpt"
         case claude
+        case openCodeGo = "opencodego"
     }
 
     private static let prefix = "provider.lastSuccess."

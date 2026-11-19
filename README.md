@@ -20,8 +20,16 @@ macOS 14+, не нотаризовано (локальная подпись Tray
 - Cursor — токен с этого Mac / cookie (хранится в файле приложения `0600`, без запросов Keychain)
 - ChatGPT и Claude — вход в окне приложения (WKWebView), без чтения паролей браузера
 - ChatGPT: если web-сессия истекла — локальный fallback на вход Codex CLI (источник виден в popover)
+- OpenCode Go — лимиты 5ч / неделя / месяц из локального входа OpenCode или Go API key
 - «Открывать при входе» включено по умолчанию
 - Advanced — опциональный импорт из браузера / Safe Storage (может спросить пароль Keychain)
+
+## Что нового в 0.2.27
+
+- Добавлен провайдер **OpenCode Go**: 5-часовое, недельное и месячное окна.
+- Ключ берётся автоматически из локального входа OpenCode (`~/.local/share/opencode/opencode.db`); если его нет — в **Advanced** можно вставить Go API key.
+- OpenCode Go отключается/подключается через Настройки, как остальные провайдеры.
+- Обновлены иконка в трее, высота popover (4 провайдера) и тесты (36).
 
 ## Что нового в 0.2.26
 
@@ -101,9 +109,9 @@ macOS 14+, не нотаризовано (локальная подпись Tray
 
 ## Установка
 
-### DMG (рекомендуется) — v0.2.26
+### DMG (рекомендуется) — v0.2.27
 
-1. Скачайте [**TrayAILimits-0.2.26.dmg**](https://github.com/alebastr12/cursor-limits-tray/releases/download/v0.2.26/TrayAILimits-0.2.26.dmg) или откройте [последний релиз](https://github.com/alebastr12/cursor-limits-tray/releases/latest).
+1. Скачайте [**TrayAILimits-0.2.27.dmg**](https://github.com/alebastr12/cursor-limits-tray/releases/download/v0.2.27/TrayAILimits-0.2.27.dmg) или откройте [последний релиз](https://github.com/alebastr12/cursor-limits-tray/releases/latest).
 2. Перетащите `TrayAILimits.app` в **Программы** (в Finder отображается как **Tray AI limits**).
 3. Первый запуск: правый клик → **Открыть** (приложение не нотаризовано, Gatekeeper спросит подтверждение).
 4. Старую `CursorLimitsTray.app` можно удалить из Программ.
@@ -117,12 +125,12 @@ git clone https://github.com/alebastr12/cursor-limits-tray.git
 cd cursor-limits-tray
 ./Scripts/setup-signing.sh                  # один раз: identity TrayAILimits Dev
 export CODESIGN_IDENTITY="TrayAILimits Dev"
-./Scripts/package-dmg.sh 0.2.26
-./Scripts/package-release.sh 0.2.26
-open dist/TrayAILimits-0.2.26.dmg
+./Scripts/package-dmg.sh 0.2.27
+./Scripts/package-release.sh 0.2.27
+open dist/TrayAILimits-0.2.27.dmg
 ```
 
-Артефакты релиза: `dist/TrayAILimits-0.2.26.dmg`, `dist/TrayAILimits-0.2.26.zip` и стабильные копии `TrayAILimits-macOS.*`.
+Артефакты релиза: `dist/TrayAILimits-0.2.27.dmg`, `dist/TrayAILimits-0.2.27.zip` и стабильные копии `TrayAILimits-macOS.*`.
 
 Нужны Xcode Command Line Tools / Swift toolchain.
 
@@ -157,7 +165,7 @@ swift test
 
 ### Cursor
 
-Обычно подхватывается автоматически с этого Mac (токен кэшируется в Keychain приложения). Если нет — в **Advanced** вставьте session cookie или bearer (без разблокировки чужих Keychain).
+Обычно подхватывается автоматически с этого Mac (токен хранится в файле приложения с правами `0600`). Если нет — в **Advanced** вставьте session cookie или bearer (без разблокировки чужих Keychain).
 
 ### ChatGPT
 
@@ -169,6 +177,10 @@ swift test
 
 **Подключить Claude** → вход на claude.ai в окне приложения. После подключения Claude появится в трее и popover.
 
+### OpenCode Go
+
+Обычно подхватывается автоматически из локального входа OpenCode (`~/.local/share/opencode/opencode.db`). Показывает окна 5 часов / неделя / месяц. Если локального входа нет — Настройки → **Advanced** → **OpenCode Go API key** (ключ из [Console](https://opencode.ai/console)). Отключение — красный `✕` в Настройках.
+
 ### Трей
 
 Показываются только подключённые сервисы: узнаваемая иконка провайдера + `%`. Цвет — зелёный / оранжевый / красный по остатку. Закрытие окон (✕ / ⌘W) не завершает приложение — оно остаётся в меню.
@@ -178,7 +190,7 @@ swift test
 - Интервал опроса (по умолчанию 45 с)
 - Демо-данные
 - Открывать при входе
-- **Advanced** — ручные cookie и импорт из браузера (опционально)
+- **Advanced** — ручные cookie, OpenCode Go API key и импорт из браузера (опционально)
 - **Сбросить секреты** — очистить сохранённые токены
 
 ## Автозапуск
@@ -195,7 +207,7 @@ swift test
 ./dist/TrayAILimits.app/Contents/MacOS/CursorLimitsTray --probe-chatgpt
 ```
 
-Печатает строки `app-session:` (cookie из Keychain / окна входа) и `codex-cli:` (локальный вход Codex) — только статус, названия лимитов и проценты.
+Печатает строки `app-session:` (cookie из файла / окна входа) и `codex-cli:` (локальный вход Codex) — только статус, названия лимитов и проценты. `--probe-keychain` показывает файловое хранилище, состояние Keychain и флаги наличия секретов (без значений).
 
 ## FAQ
 
@@ -233,7 +245,7 @@ swift test
 ## Релизы
 
 Все версии и DMG: **[Releases](https://github.com/alebastr12/cursor-limits-tray/releases)**  
-Актуальный: [v0.2.26](https://github.com/alebastr12/cursor-limits-tray/releases/tag/v0.2.26)
+Актуальный: [v0.2.27](https://github.com/alebastr12/cursor-limits-tray/releases/tag/v0.2.27)
 
 ## Лицензия
 

@@ -21,12 +21,14 @@ struct UsageSnapshot: Equatable {
     var cursor: ProviderSnapshot
     var chatGPT: ProviderSnapshot
     var claude: ProviderSnapshot
+    var openCodeGo: ProviderSnapshot
     var isDemo: Bool
 
     static let empty = UsageSnapshot(
         cursor: ProviderSnapshot(name: "Cursor", status: "—", rows: [], fetchedAt: nil, error: nil),
         chatGPT: ProviderSnapshot(name: "ChatGPT", status: "—", rows: [], fetchedAt: nil, error: nil),
         claude: ProviderSnapshot(name: "Claude", status: "—", rows: [], fetchedAt: nil, error: nil),
+        openCodeGo: ProviderSnapshot(name: "OpenCode Go", status: "—", rows: [], fetchedAt: nil, error: nil),
         isDemo: false
     )
 
@@ -99,6 +101,37 @@ struct UsageSnapshot: Equatable {
                         detail: "Weekly",
                         percentUsed: 25,
                         remainingLabel: L10n.remainingPercent(75),
+                        resetLabel: nil
+                    )
+                ],
+                fetchedAt: now, error: nil
+            ),
+            openCodeGo: ProviderSnapshot(
+                name: "OpenCode Go",
+                status: "Go · demo",
+                rows: [
+                    LimitRow(
+                        id: "o1",
+                        title: L10n.tr("limit.window_5h"),
+                        detail: L10n.tr("limit.rolling_5h"),
+                        percentUsed: 16,
+                        remainingLabel: L10n.remainingPercent(84),
+                        resetLabel: L10n.resetLabel(relativeTo: fiveHourReset, now: now)
+                    ),
+                    LimitRow(
+                        id: "o2",
+                        title: L10n.tr("limit.week"),
+                        detail: L10n.tr("limit.weekly_rate"),
+                        percentUsed: 11,
+                        remainingLabel: L10n.remainingPercent(89),
+                        resetLabel: nil
+                    ),
+                    LimitRow(
+                        id: "o3",
+                        title: L10n.tr("limit.month"),
+                        detail: L10n.tr("limit.monthly"),
+                        percentUsed: 5,
+                        remainingLabel: L10n.remainingPercent(95),
                         resetLabel: nil
                     )
                 ],

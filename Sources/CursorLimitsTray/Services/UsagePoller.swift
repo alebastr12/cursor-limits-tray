@@ -12,6 +12,7 @@ final class UsagePoller: ObservableObject {
     @Published private(set) var cursorConfigured = false
     @Published private(set) var chatGPTConnected = false
     @Published private(set) var claudeConnected = false
+    @Published private(set) var openCodeGoConnected = false
     /// True when ChatGPT has credentials (app Keychain or recoverable WebKit session),
     /// even if the last fetch failed. Keeps the section visible with its error.
     @Published private(set) var chatGPTConfigured = false
@@ -19,6 +20,8 @@ final class UsagePoller: ObservableObject {
     @Published private(set) var chatGPTNeedsReconnect = false
     /// True after user connected Claude (secrets in app Keychain). Hidden from tray/popover until then.
     @Published private(set) var claudeConfigured = false
+    /// True when a manual Go key or the local OpenCode credential is available.
+    @Published private(set) var openCodeGoConfigured = false
     /// Compact menu-bar: one segment per live % (all limits of connected providers). Empty if none.
     @Published private(set) var menuBarSegments: [MenuBarSegment] = []
     /// Accessibility / legacy plain text (e.g. `79% 56% · 67% 88%`).
@@ -26,6 +29,7 @@ final class UsagePoller: ObservableObject {
     @Published private(set) var cursorSeverity: LimitSeverity = .unknown
     @Published private(set) var chatGPTSeverity: LimitSeverity = .unknown
     @Published private(set) var claudeSeverity: LimitSeverity = .unknown
+    @Published private(set) var openCodeGoSeverity: LimitSeverity = .unknown
     /// First configured provider whose last refresh failed — drives the tray warning icon.
     @Published private(set) var providerWarning: String?
     /// Number of provider sections currently visible (drives popover/panel height).
@@ -42,10 +46,15 @@ final class UsagePoller: ObservableObject {
     var claudeVisible: Bool {
         ProviderActivity.isVisible(id: .claude, connected: claudeConnected, snapshot: snapshot.claude)
     }
+
+    var openCodeGoVisible: Bool {
+        ProviderActivity.isVisible(id: .openCodeGo, connected: openCodeGoConnected, snapshot: snapshot.openCodeGo)
+    }
     @Published var chatGPTNeedsFDA = false
     @Published var claudeNeedsFDA = false
     @Published var chatGPTAutoSource: String?
     @Published var claudeAutoSource: String?
+    @Published var openCodeGoAutoSource: String?
     @Published var connectionNote: String?
 
     func applyDemoSnapshot() {
@@ -59,6 +68,9 @@ final class UsagePoller: ObservableObject {
         chatGPTAutoSource = nil
         claudeConnected = true
         claudeConfigured = true
+        openCodeGoConnected = true
+        openCodeGoConfigured = true
+        openCodeGoAutoSource = nil
         providerWarning = nil
         publishMenuBar()
     }
@@ -77,6 +89,13 @@ final class UsagePoller: ObservableObject {
     private var chatGPTRecoveryDisabled: Bool {
         get { UserDefaults.standard.bool(forKey: Self.recoveryDisabledKey) }
         set { UserDefaults.standard.set(newValue, forKey: Self.recoveryDisabledKey) }
+    }
+    private static let openCodeGoDisabledKey = "opencodego.autoDisabled"
+    /// Set by "Disconnect OpenCode Go" so the local OpenCode login is not
+    /// re-imported until the user explicitly reconnects it.
+    private var openCodeGoAutoDisabled: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.openCodeGoDisabledKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.openCodeGoDisabledKey) }
     }
 
     init() {
@@ -265,8 +284,12 @@ final class UsagePoller: ObservableObject {
         Task { await WebKitCookieBridge.clearChatGPTCookies() }
         claudeConnected = false
         claudeConfigured = false
+        openCodeGoConnected = false
+        openCodeGoConfigured = false
+        openCodeGoAutoDisabled = false
         chatGPTAutoSource = nil
         claudeAutoSource = nil
+        openCodeGoAutoSource = nil
         chatGPTNeedsFDA = false
         claudeNeedsFDA = false
         connectionNote = nil
@@ -324,6 +347,36 @@ final class UsagePoller: ObservableObject {
         refreshNow()
     }
 
+    func saveOpenCodeGoKey(_ key: String) {
+        SessionSecrets.set(key, account: .openCodeGoAPIKey)
+        openCodeGoAutoDisabled = false
+        openCodeGoConfigured = true
+        openCodeGoConnected = true
+        openCodeGoAutoSource = L10n.tr("source.opencode_key")
+        refreshNow()
+    }
+
+    /// Re-enable auto-detection from the local OpenCode login.
+    func connectOpenCodeGo() {
+        openCodeGoAutoDisabled = false
+        refreshNow()
+    }
+
+    /// Remove OpenCode Go from the tray. The local OpenCode login is left alone;
+    /// auto-detection stays disabled until the user explicitly reconnects.
+    func forgetOpenCodeGo() {
+        SessionSecrets.clear(.openCodeGoAPIKey)
+        openCodeGoAutoDisabled = true
+        ProviderActivity.clear(.openCodeGo)
+        openCodeGoConnected = false
+        openCodeGoConfigured = false
+        openCodeGoAutoSource = nil
+        snapshot.openCodeGo = ProviderSnapshot(name: "OpenCode Go", status: "", rows: [], fetchedAt: nil, error: nil)
+        updateProviderWarning()
+        publishMenuBar()
+        refreshNow()
+    }
+
     func openFullDiskAccessSettings() {
         let urls = [
             "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles",
@@ -363,6 +416,8 @@ final class UsagePoller: ObservableObject {
         guard isCurrent(generation) else { return }
         refreshConfiguredFlags()
 
+        let openCodeGoAuth = resolveOpenCodeGoAuth()
+        openCodeGoConfigured = openCodeGoAuth != nil
         let chatGPTIsConfigured = hasChatGPTSecrets
         let claudeIsConfigured = claudeConfigured
         let webRetryDue = chatGPTAuthFailedAt.map {
@@ -390,8 +445,10 @@ final class UsagePoller: ObservableObject {
             allowWeb: webRetryDue
         )
         async let claudeFetch = fetchClaudeIfConfigured(claudeIsConfigured, auth: claudeAuth)
+        async let openCodeFetch = fetchOpenCodeGoIfConfigured(openCodeGoAuth)
 
-        let (cursorOutcome, chatGPTOutcome, claudeOutcome) = await (cursorFetch, chatGPTFetch, claudeFetch)
+        let (cursorOutcome, chatGPTOutcome, claudeOutcome, openCodeOutcome) =
+            await (cursorFetch, chatGPTFetch, claudeFetch, openCodeFetch)
         guard isCurrent(generation) else { return }
 
         var next = snapshot
@@ -430,6 +487,23 @@ final class UsagePoller: ObservableObject {
             next.claude = ProviderSnapshot(name: "Claude", status: "", rows: [], fetchedAt: nil, error: nil)
         }
 
+        if let openCodeOutcome {
+            openCodeGoConfigured = true
+            openCodeGoAutoSource = openCodeGoAuth?.source
+            openCodeGoConnected = apply(openCodeOutcome, previous: next.openCodeGo, into: &next.openCodeGo)
+            if openCodeGoConnected {
+                markSuccess(.openCodeGo, next.openCodeGo)
+                if let source = openCodeGoAutoSource, !source.isEmpty {
+                    next.openCodeGo.status += " · \(source)"
+                }
+            }
+        } else {
+            openCodeGoConnected = false
+            openCodeGoConfigured = false
+            openCodeGoAutoSource = nil
+            next.openCodeGo = ProviderSnapshot(name: "OpenCode Go", status: "", rows: [], fetchedAt: nil, error: nil)
+        }
+
         snapshot = next
         lastError = [next.cursor.error, next.chatGPT.error, next.claude.error]
             .compactMap { $0 }
@@ -442,7 +516,8 @@ final class UsagePoller: ObservableObject {
         let failed: [String] = [
             (cursorConfigured && cursorVisible && !cursorConnected) ? "Cursor" : nil,
             (chatGPTConfigured && chatGPTVisible && !chatGPTConnected) ? "ChatGPT" : nil,
-            (claudeConfigured && claudeVisible && !claudeConnected) ? "Claude" : nil
+            (claudeConfigured && claudeVisible && !claudeConnected) ? "Claude" : nil,
+            (openCodeGoConfigured && openCodeGoVisible && !openCodeGoConnected) ? "OpenCode Go" : nil
         ].compactMap { $0 }
         providerWarning = failed.first
     }
@@ -463,6 +538,24 @@ final class UsagePoller: ObservableObject {
     ) async -> ChatGPTOutcome? {
         guard configured else { return nil }
         return await ProviderFetcher.chatGPT(auth: auth, allowWeb: allowWeb)
+    }
+
+    private struct OpenCodeGoAuth {
+        let auth: OpenCodeGoUsageClient.Auth
+        let source: String?
+    }
+
+    private func resolveOpenCodeGoAuth() -> OpenCodeGoAuth? {
+        if let key = SessionSecrets.get(.openCodeGoAPIKey), !key.isEmpty {
+            return OpenCodeGoAuth(auth: .init(apiKey: key), source: L10n.tr("source.opencode_key"))
+        }
+        guard !openCodeGoAutoDisabled, let local = OpenCodeLocalAuth.load() else { return nil }
+        return OpenCodeGoAuth(auth: .init(apiKey: local.accessToken), source: L10n.tr("source.opencode_cli"))
+    }
+
+    private func fetchOpenCodeGoIfConfigured(_ auth: OpenCodeGoAuth?) async -> ProviderOutcome? {
+        guard let auth else { return nil }
+        return await ProviderFetcher.openCodeGo(auth: auth.auth)
     }
 
     private func fetchClaudeIfConfigured(
@@ -522,14 +615,16 @@ final class UsagePoller: ObservableObject {
             snapshot: snapshot,
             cursorConnected: cursorConnected,
             chatGPTConnected: chatGPTConnected,
-            claudeConnected: claudeConnected
+            claudeConnected: claudeConnected,
+            openCodeGoConnected: openCodeGoConnected
         )
         cursorSeverity = output.cursorSeverity
         chatGPTSeverity = output.chatGPTSeverity
         claudeSeverity = output.claudeSeverity
+        openCodeGoSeverity = output.openCodeGoSeverity
         menuBarSegments = output.segments
         menuBarText = MenuBarPresenter.plainText(segments: output.segments)
-        visibleProviderCount = [cursorVisible, chatGPTVisible, claudeVisible].filter { $0 }.count
+        visibleProviderCount = [cursorVisible, chatGPTVisible, claudeVisible, openCodeGoVisible].filter { $0 }.count
     }
 
     private func resolveCursorAuth() -> CursorUsageClient.Auth {

@@ -6,12 +6,14 @@ private enum SettingsProvider {
     case cursor
     case chatGPT
     case claude
+    case openCodeGo
 
     var name: String {
         switch self {
         case .cursor: return "Cursor"
         case .chatGPT: return "ChatGPT"
         case .claude: return "Claude"
+        case .openCodeGo: return "OpenCode Go"
         }
     }
 
@@ -21,6 +23,7 @@ private enum SettingsProvider {
         case .cursor: poller.forgetCursor()
         case .chatGPT: poller.forgetChatGPT()
         case .claude: poller.forgetClaude()
+        case .openCodeGo: poller.forgetOpenCodeGo()
         }
     }
 }
@@ -38,6 +41,7 @@ struct SettingsView: View {
     @State private var manualChatCookie = ""
     @State private var manualCursorCookie = ""
     @State private var manualClaudeCookie = ""
+    @State private var manualOpenCodeKey = ""
     @State private var statusMessage: String?
     @State private var statusIsError = false
 
@@ -143,6 +147,33 @@ struct SettingsView: View {
                         .foregroundStyle(.red)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+
+                connectionRow(
+                    title: "OpenCode Go",
+                    ok: poller.openCodeGoConnected,
+                    detail: openCodeGoDetail,
+                    onRemove: poller.openCodeGoConfigured ? { requestRemove(.openCodeGo) } : nil
+                )
+
+                if !poller.openCodeGoConfigured {
+                    Button {
+                        poller.connectOpenCodeGo()
+                        statusIsError = false
+                        statusMessage = L10n.tr("settings.msg_opencode_connecting")
+                    } label: {
+                        Text(L10n.tr("settings.connect_opencode"))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                }
+
+                if poller.openCodeGoConfigured, let error = poller.snapshot.openCodeGo.error {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .padding(14)
             .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
@@ -216,6 +247,14 @@ struct SettingsView: View {
 
                     secretField(L10n.tr("settings.chatgpt_cookie"), text: $manualChatCookie)
                     secretField(L10n.tr("settings.claude_cookie"), text: $manualClaudeCookie)
+
+                    Text(L10n.tr("settings.opencode_key"))
+                        .font(.caption)
+                    secretField(L10n.tr("settings.paste_value"), text: $manualOpenCodeKey)
+                    Text(L10n.tr("settings.opencode_key_hint"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .formStyle(.grouped)
@@ -243,7 +282,7 @@ struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 500, height: 620)
+        .frame(width: 500, height: 720)
         .alert(
             providerToRemove.map { L10n.tr("settings.remove_title", $0.name) } ?? "",
             isPresented: removalAlertPresented,
@@ -267,7 +306,14 @@ struct SettingsView: View {
                 ?? SessionSecrets.get(.cursorBearerOverride)
                 ?? ""
             manualClaudeCookie = SessionSecrets.get(.claudeSessionCookie) ?? ""
+            manualOpenCodeKey = SessionSecrets.get(.openCodeGoAPIKey) ?? ""
         }
+    }
+
+    private var openCodeGoDetail: String {
+        if poller.openCodeGoConnected { return L10n.tr("settings.opencode_ok") }
+        if poller.openCodeGoConfigured { return L10n.tr("settings.opencode_bad") }
+        return L10n.tr("settings.opencode_need")
     }
 
     private var chatDetail: String {
@@ -361,6 +407,9 @@ struct SettingsView: View {
         case .claude:
             manualClaudeCookie = ""
             statusMessage = L10n.tr("settings.msg_claude_disconnected")
+        case .openCodeGo:
+            manualOpenCodeKey = ""
+            statusMessage = L10n.tr("settings.msg_opencode_disconnected")
         }
         providerToRemove = nil
         StatusItemController.shared.isModalPresented = false
@@ -412,6 +461,11 @@ struct SettingsView: View {
         let a = manualClaudeCookie.trimmingCharacters(in: .whitespacesAndNewlines)
         if !a.isEmpty {
             SessionSecrets.set(a, account: .claudeSessionCookie)
+        }
+
+        let o = manualOpenCodeKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !o.isEmpty {
+            poller.saveOpenCodeGoKey(o)
         }
 
         LoginItemBootstrap.prefersOpenAtLogin = openAtLogin

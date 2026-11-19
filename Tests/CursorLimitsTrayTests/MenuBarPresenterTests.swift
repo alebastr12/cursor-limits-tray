@@ -24,6 +24,15 @@ final class MenuBarPresenterTests: XCTestCase {
                 error: nil
             ),
             claude: .init(name: "Claude", status: "", rows: [], fetchedAt: nil, error: nil),
+            openCodeGo: ProviderSnapshot(
+                name: "OpenCode Go",
+                status: "",
+                rows: [
+                    LimitRow(id: "o1", title: "5h", detail: "", percentUsed: 40, remainingLabel: nil, resetLabel: nil)
+                ],
+                fetchedAt: nil,
+                error: nil
+            ),
             isDemo: false
         )
 
@@ -31,14 +40,16 @@ final class MenuBarPresenterTests: XCTestCase {
             snapshot: snapshot,
             cursorConnected: true,
             chatGPTConnected: true,
-            claudeConnected: false
+            claudeConnected: false,
+            openCodeGoConnected: true
         )
 
-        XCTAssertEqual(output.segments.map(\.remainingPercent), [79, 56, 67])
-        XCTAssertEqual(MenuBarPresenter.plainText(segments: output.segments), "79% 56% · 67%")
+        XCTAssertEqual(output.segments.map(\.remainingPercent), [79, 56, 67, 60])
+        XCTAssertEqual(MenuBarPresenter.plainText(segments: output.segments), "79% 56% · 67% · 60%")
         XCTAssertEqual(output.cursorSeverity, .ok)
         XCTAssertEqual(output.chatGPTSeverity, .ok)
         XCTAssertEqual(output.claudeSeverity, .unknown)
+        XCTAssertEqual(output.openCodeGoSeverity, .ok)
     }
 
     func testSeverityThresholds() {
@@ -46,6 +57,7 @@ final class MenuBarPresenterTests: XCTestCase {
             cursor: .init(name: "Cursor", status: "", rows: [], fetchedAt: nil, error: nil),
             chatGPT: .init(name: "ChatGPT", status: "", rows: [], fetchedAt: nil, error: nil),
             claude: .init(name: "Claude", status: "", rows: [], fetchedAt: nil, error: nil),
+            openCodeGo: .init(name: "OpenCode Go", status: "", rows: [], fetchedAt: nil, error: nil),
             isDemo: false
         )
         let low = UsageSnapshot(
@@ -58,6 +70,7 @@ final class MenuBarPresenterTests: XCTestCase {
             ),
             chatGPT: snapshot.chatGPT,
             claude: snapshot.claude,
+            openCodeGo: snapshot.openCodeGo,
             isDemo: false
         )
 
@@ -65,7 +78,8 @@ final class MenuBarPresenterTests: XCTestCase {
             snapshot: low,
             cursorConnected: true,
             chatGPTConnected: false,
-            claudeConnected: false
+            claudeConnected: false,
+            openCodeGoConnected: false
         )
         XCTAssertEqual(output.cursorSeverity, .low)
         XCTAssertEqual(output.segments.first?.remainingPercent, 30)
@@ -77,7 +91,8 @@ final class MenuBarPresenterTests: XCTestCase {
             snapshot: snapshot,
             cursorConnected: false,
             chatGPTConnected: true,
-            claudeConnected: false
+            claudeConnected: false,
+            openCodeGoConnected: false
         )
         XCTAssertTrue(output.segments.isEmpty)
         XCTAssertEqual(MenuBarPresenter.tooltip(segments: []), L10n.tr("tooltip.empty"))

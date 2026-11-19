@@ -6,7 +6,7 @@ struct PopoverView: View {
     @Environment(\.openWindow) private var openWindow
 
     private var anyVisible: Bool {
-        poller.cursorVisible || poller.chatGPTVisible || poller.claudeVisible
+        poller.cursorVisible || poller.chatGPTVisible || poller.claudeVisible || poller.openCodeGoVisible
     }
 
     var body: some View {
@@ -43,6 +43,14 @@ struct PopoverView: View {
                         ProviderSection(
                             snapshot: poller.snapshot.claude,
                             connected: poller.claudeConnected
+                        )
+                    }
+
+                    if poller.openCodeGoVisible {
+                        ProviderSection(
+                            snapshot: poller.snapshot.openCodeGo,
+                            connected: poller.openCodeGoConnected,
+                            source: poller.openCodeGoAutoSource
                         )
                     }
                 }

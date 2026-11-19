@@ -22,8 +22,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.setContentSize(NSSize(width: 500, height: 620))
-        window.minSize = NSSize(width: 500, height: 620)
+        window.setContentSize(NSSize(width: 500, height: 720))
+        window.minSize = NSSize(width: 500, height: 720)
         window.center()
         self.window = window
         window.makeKeyAndOrderFront(nil)
