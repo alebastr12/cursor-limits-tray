@@ -1,8 +1,8 @@
 # Tray AI limits
 
-Native macOS menu-bar app for live **Cursor** / **ChatGPT** / **Claude** usage limits.
+Native macOS menu-bar app for live **Cursor** / **ChatGPT** / **Claude** / **OpenCode Go** usage limits.
 
-Нативное приложение в строке меню macOS: живые лимиты Cursor, ChatGPT и Claude — без паролей Keychain в обычном сценарии.
+Нативное приложение в строке меню macOS: живые лимиты OpenCode Go, Cursor, ChatGPT и Claude — без паролей Keychain в обычном сценарии.
 
 Репозиторий: [`cursor-limits-tray`](https://github.com/alebastr12/cursor-limits-tray) (имя продукта — **Tray AI limits**).
 
@@ -10,9 +10,7 @@ Native macOS menu-bar app for live **Cursor** / **ChatGPT** / **Claude** usage l
 
 ## Что это
 
-**Tray AI limits** показывает остаток лимитов прямо в menu bar (иконка + все `%` каждого подключённого сервиса) и в компактном popover. Опрос раз в ~45 с. В трее и popover видны только подключённые провайдеры — без букв `C`/`G`/`A` и без заглушек. Если у провайдера несколько лимитов, в строке меню показываются все. Popover открывается поверх fullscreen Space; при наведении на трей — подсказка с типами лимитов (5ч / неделя / месяц) и остатком `%`.
-
-macOS 14+, не нотаризовано (локальная подпись TrayAILimits Dev / Apple Development либо ad-hoc).
+**Tray AI limits** показывает остаток лимитов прямо в menu bar (иконка + все `%` каждого подключённого сервиса) и в компактном popover. Опрос раз в ~45 с (настраивается). В трее и popover видны только подключённые провайдеры с оставшимися лимитами. Если у провайдера несколько лимитов, в строке меню показываются все. При наведении на трей — подсказка с типами лимитов (5ч / неделя / месяц) и остатком `%`.
 
 ## Функции
 
@@ -21,8 +19,6 @@ macOS 14+, не нотаризовано (локальная подпись Tray
 - ChatGPT и Claude — вход в окне приложения (WKWebView), без чтения паролей браузера
 - ChatGPT: если web-сессия истекла — локальный fallback на вход Codex CLI (источник виден в popover)
 - OpenCode Go — лимиты 5ч / неделя / месяц из локального входа OpenCode или Go API key
-- «Открывать при входе» включено по умолчанию
-- Advanced — опциональный импорт из браузера / Safe Storage (может спросить пароль Keychain)
 
 ## Что нового в 0.2.30
 
