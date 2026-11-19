@@ -109,20 +109,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if args.contains("--probe-keychain") {
             Task { @MainActor in
                 var lines: [String] = []
+                lines.append("keychainUnlocked: \(KeychainLock.isUnlocked)")
+                let file = FileSecretStore.all()
+                let fileSummary = file.isEmpty
+                    ? "empty"
+                    : file.map { "\($0.key)(len=\($0.value.count))" }.sorted().joined(separator: ", ")
+                lines.append("file: \(fileSummary)")
                 for account in KeychainStore.Account.allCases {
-                    let presence = SecretsPresence.has(account)
-                    let status: String
-                    switch KeychainStore.loadResult(account, allowPrompt: false) {
-                    case .found(let value):
-                        status = "found(len=\(value.count))"
-                    case .missing:
-                        status = "missing"
-                    case .interactionRequired:
-                        status = "interactionRequired"
-                    case .failed(let code):
-                        status = "failed(\(code))"
-                    }
-                    lines.append("\(account.rawValue): presence=\(presence) \(status)")
+                    lines.append("\(account.rawValue): presence=\(SecretsPresence.has(account))")
                 }
                 fputs(lines.joined(separator: "\n") + "\n", stdout)
                 fflush(stdout)
@@ -135,7 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in
                 var lines: [String] = []
                 var cookie = SessionSecrets.get(.chatGPTSessionCookie)
-                if cookie == nil {
+                if cookie == nil, KeychainLock.isUnlocked {
                     cookie = await WebKitCookieBridge.chatGPTSessionCookie()
                 }
 

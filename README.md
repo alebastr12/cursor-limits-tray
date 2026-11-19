@@ -17,11 +17,20 @@ macOS 14+, не нотаризовано (локальная подпись Tray
 ## Функции
 
 - Живые проценты в строке меню и подробности в popover
-- Cursor — токен с этого Mac / cookie (хранится в защищённом хранилище приложения, без запросов пароля)
+- Cursor — токен с этого Mac / cookie (хранится в файле приложения `0600`, без запросов Keychain)
 - ChatGPT и Claude — вход в окне приложения (WKWebView), без чтения паролей браузера
 - ChatGPT: если web-сессия истекла — локальный fallback на вход Codex CLI (источник виден в popover)
 - «Открывать при входе» включено по умолчанию
 - Advanced — опциональный импорт из браузера / Safe Storage (может спросить пароль Keychain)
+
+## Что нового в 0.2.23
+
+- **Свои сессии больше не используют Keychain вообще.** Они хранятся в `~/Library/Application Support/TrayAILimits/secrets.json` с правами `0600`; при запуске и подключении нет запросов пароля login Keychain (включая запуск как login item при заблокированной связке).
+- ChatGPT переносится из старого Keychain автоматически, когда Keychain разблокирован. Для токена Cursor со старым ACL в Настройках есть кнопка **«Перенести сохранённый токен Cursor»** — она один раз спросит пароль Keychain, после чего токен живёт в файле.
+- Старые Keychain-элементы (v1/v2) игнорируются и больше не читаются на обычном пути.
+- Чужие Keychain (Cursor Safe Storage, браузеры) по-прежнему доступны только через Advanced и могут запросить пароль.
+
+**Безопасность:** файл `secrets.json` имеет права `0600` (доступен приложениям этого пользователя), каталог `0700`; диск защищён FileVault. Это практический уровень доступа как у прежнего ACL «any app», но без Keychain-диалогов.
 
 ## Что нового в 0.2.22
 
@@ -85,9 +94,9 @@ macOS 14+, не нотаризовано (локальная подпись Tray
 
 ## Установка
 
-### DMG (рекомендуется) — v0.2.22
+### DMG (рекомендуется) — v0.2.23
 
-1. Скачайте [**TrayAILimits-0.2.22.dmg**](https://github.com/alebastr12/cursor-limits-tray/releases/download/v0.2.22/TrayAILimits-0.2.22.dmg) или откройте [последний релиз](https://github.com/alebastr12/cursor-limits-tray/releases/latest).
+1. Скачайте [**TrayAILimits-0.2.23.dmg**](https://github.com/alebastr12/cursor-limits-tray/releases/download/v0.2.23/TrayAILimits-0.2.23.dmg) или откройте [последний релиз](https://github.com/alebastr12/cursor-limits-tray/releases/latest).
 2. Перетащите `TrayAILimits.app` в **Программы** (в Finder отображается как **Tray AI limits**).
 3. Первый запуск: правый клик → **Открыть** (приложение не нотаризовано, Gatekeeper спросит подтверждение).
 4. Старую `CursorLimitsTray.app` можно удалить из Программ.
@@ -103,10 +112,10 @@ cd cursor-limits-tray
 export CODESIGN_IDENTITY="TrayAILimits Dev"
 ./Scripts/package-dmg.sh 0.2.21
 ./Scripts/package-release.sh 0.2.21
-open dist/TrayAILimits-0.2.22.dmg
+open dist/TrayAILimits-0.2.23.dmg
 ```
 
-Артефакты релиза: `dist/TrayAILimits-0.2.22.dmg`, `dist/TrayAILimits-0.2.21.zip` и стабильные копии `TrayAILimits-macOS.*`.
+Артефакты релиза: `dist/TrayAILimits-0.2.23.dmg`, `dist/TrayAILimits-0.2.21.zip` и стабильные копии `TrayAILimits-macOS.*`.
 
 Нужны Xcode Command Line Tools / Swift toolchain.
 
@@ -189,14 +198,14 @@ swift test
 
 | Действие | Диалоги |
 |----------|---------|
-| Запуск / опрос | **Нет** (свои сессии — в Keychain с ACL без запроса пароля) |
+| Запуск / опрос | **Нет** (свои сессии — в файле `0600`, Keychain не используется) |
 | Подключить ChatGPT / Claude | Нет (Keychain) |
 | Открывать при входе / копия с DMG | Без admin-цикла |
 | **Advanced** → браузер / Safe Storage | Может спросить пароль — опционально |
 
 ### Почему Keychain больше не спрашивает пароль?
 
-Свои сессии хранятся в login Keychain в отдельной service `local.cursor-limits-tray.v2` с ACL, не привязанным к подписи приложения. macOS не показывает SecurityAgent, а данные остаются зашифрованными Keychain. Практический уровень доступа — как у файла `0600`: приложения этого пользователя могут их прочитать. Чужие Keychain (Cursor Safe Storage, браузеры) по-прежнему читаются только в **Advanced** и могут запросить пароль.
+Свои сессии хранятся в `~/Library/Application Support/TrayAILimits/secrets.json` с правами `0600` (каталог `0700`); Keychain на обычном пути не используется. Поэтому нет запросов пароля ни при запуске, ни при подключении, ни после переподписи приложения. Практический уровень доступа — как у файла `0600`: приложения этого пользователя могут его прочитать; диск защищает FileVault. Чужие Keychain (Cursor Safe Storage, браузеры) по-прежнему читаются только в **Advanced** и могут запросить пароль.
 
 ### Зачем Advanced?
 
@@ -217,7 +226,7 @@ swift test
 ## Релизы
 
 Все версии и DMG: **[Releases](https://github.com/alebastr12/cursor-limits-tray/releases)**  
-Актуальный: [v0.2.22](https://github.com/alebastr12/cursor-limits-tray/releases/tag/v0.2.22)
+Актуальный: [v0.2.23](https://github.com/alebastr12/cursor-limits-tray/releases/tag/v0.2.23)
 
 ## Лицензия
 

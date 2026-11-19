@@ -507,6 +507,9 @@ final class UsagePoller: ObservableObject {
     private func recoverChatGPTSecretsIfNeeded() async {
         guard !chatGPTRecoveryDisabled else { return }
         guard !hasChatGPTSecrets else { return }
+        // The WKWebView cookie store and the migration path must not run while
+        // the login Keychain is locked: that would show a password dialog.
+        guard KeychainLock.isUnlocked else { return }
         guard let header = await WebKitCookieBridge.chatGPTSessionCookie() else { return }
         SessionSecrets.set(header, account: .chatGPTSessionCookie)
         chatGPTAutoSource = L10n.tr("source.webkit")

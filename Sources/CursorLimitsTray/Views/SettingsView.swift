@@ -11,6 +11,7 @@ struct SettingsView: View {
     @State private var openAtLogin: Bool = false
     @State private var showAdvanced = false
     @State private var showSecrets = false
+    @State private var hasLegacyCursor = false
     @State private var manualChatCookie = ""
     @State private var manualCursorCookie = ""
     @State private var manualClaudeCookie = ""
@@ -34,6 +35,28 @@ struct SettingsView: View {
                         ? L10n.tr("settings.cursor_ok")
                         : L10n.tr("settings.cursor_need")
                 )
+
+                if hasLegacyCursor {
+                    Button {
+                        let ok = SessionSecrets.importLegacyCursorTokenInteractively()
+                        hasLegacyCursor = SessionSecrets.hasLegacyCursorToken
+                        poller.refreshNow()
+                        statusIsError = !ok
+                        statusMessage = ok
+                            ? L10n.tr("settings.msg_cursor_migrated")
+                            : L10n.tr("settings.msg_cursor_migrate_failed")
+                    } label: {
+                        Text(L10n.tr("settings.legacy_cursor_title"))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                    Text(L10n.tr("settings.legacy_cursor_hint"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 connectionRow(
                     title: "ChatGPT",
@@ -223,6 +246,7 @@ struct SettingsView: View {
         .frame(width: 500, height: 620)
         .onAppear {
             openAtLogin = LoginItemBootstrap.prefersOpenAtLogin
+            hasLegacyCursor = SessionSecrets.hasLegacyCursorToken
             manualChatCookie = SessionSecrets.get(.chatGPTSessionCookie) ?? ""
             manualCursorCookie = SessionSecrets.get(.cursorSessionCookie)
                 ?? SessionSecrets.get(.cursorBearerOverride)
