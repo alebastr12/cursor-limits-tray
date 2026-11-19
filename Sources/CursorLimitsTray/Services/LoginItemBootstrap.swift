@@ -66,23 +66,73 @@ enum LoginItemBootstrap {
     }
 
     private static func copyToApplicationsAndRelaunch(from bundlePath: String) {
-        let fm = FileManager.default
-        let dest = "/Applications/TrayAILimits.app"
-        do {
-            if fm.fileExists(atPath: dest) {
-                // Prefer replace without elevating; if locked, show manual drag (no auth retry).
-                try fm.removeItem(atPath: dest)
-            }
-            try fm.copyItem(atPath: bundlePath, toPath: dest)
-            NSWorkspace.shared.open(URL(fileURLWithPath: dest))
+        // Replacing a running copy can make Finder ask for an administrator
+        // password. Quit old instances first, then install without elevation.
+        quitOtherInstances()
+
+        if let destination = install(from: bundlePath) {
+            NSWorkspace.shared.open(destination)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 NSApp.terminate(nil)
             }
-        } catch {
-            let alert = NSAlert()
-            alert.messageText = L10n.tr("install.copy_fail_title")
-            alert.informativeText = L10n.tr("install.copy_fail_body", error.localizedDescription)
-            alert.runModal()
+            return
         }
+
+        let alert = NSAlert()
+        alert.messageText = L10n.tr("install.copy_fail_title")
+        alert.informativeText = L10n.tr(
+            "install.copy_fail_body",
+            lastInstallError?.localizedDescription ?? ""
+        )
+        alert.runModal()
+    }
+
+    private static var lastInstallError: Error?
+
+    /// Prefer `/Applications`; fall back to `~/Applications` when the system
+    /// location is not writable (or contains a copy owned by someone else).
+    /// Neither path needs an administrator password.
+    private static func install(from bundlePath: String) -> URL? {
+        let fm = FileManager.default
+        let homeApplications = fm.homeDirectoryForCurrentUser
+            .appendingPathComponent("Applications", isDirectory: true)
+        let destinations = [
+            URL(fileURLWithPath: "/Applications", isDirectory: true),
+            homeApplications
+        ]
+
+        lastInstallError = nil
+        for directory in destinations {
+            let destination = directory.appendingPathComponent("TrayAILimits.app", isDirectory: true)
+            do {
+                try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+                if fm.fileExists(atPath: destination.path) {
+                    try fm.removeItem(at: destination)
+                }
+                try fm.copyItem(atPath: bundlePath, toPath: destination.path)
+                return destination
+            } catch {
+                lastInstallError = error
+                // Clean up a partial copy before trying the next location.
+                try? fm.removeItem(at: destination)
+            }
+        }
+        return nil
+    }
+
+    private static func quitOtherInstances() {
+        guard let bundleID = Bundle.main.bundleIdentifier else { return }
+        let currentPID = ProcessInfo.processInfo.processIdentifier
+        let others = NSRunningApplication
+            .runningApplications(withBundleIdentifier: bundleID)
+            .filter { $0.processIdentifier != currentPID }
+        guard !others.isEmpty else { return }
+
+        others.forEach { $0.terminate() }
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline, others.contains(where: { !$0.isTerminated }) {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        others.filter { !$0.isTerminated }.forEach { $0.forceTerminate() }
     }
 }

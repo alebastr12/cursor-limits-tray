@@ -28,10 +28,10 @@
 "error.connect_chatgpt" = "Click Connect ChatGPT.";
 "error.connect_claude" = "Click Connect Claude — or open the Claude app on this Mac.";
 "error.connect_claude_or_app" = "Click Connect Claude or sign in to the Claude app on this Mac.";
-"install.copy_body" = "You’re running from a disk image. Copy to Applications so Open at Login works reliably (no admin password for a normal install).";
+"install.copy_body" = "You’re running from a disk image. Install the app so Open at Login works reliably — Applications, or your home Applications folder if the system one is not writable. No admin password is needed.";
 "install.copy_button" = "Copy to Applications";
-"install.copy_fail_body" = "Drag TrayAILimits.app to Applications manually.\n%@";
-"install.copy_fail_title" = "Couldn’t copy without a password";
+"install.copy_fail_body" = "Tried /Applications and ~/Applications.\n%@";
+"install.copy_fail_title" = "Couldn’t install the app";
 "install.copy_title" = "Install to Applications?";
 "limit.five_week_combo" = "5h / week limits";
 "limit.included_usage" = "Included usage";

@@ -28,10 +28,10 @@
 "error.connect_chatgpt" = "Нажмите «Подключить ChatGPT».";
 "error.connect_claude" = "Нажмите «Подключить Claude» — или откройте приложение Claude на этом Mac.";
 "error.connect_claude_or_app" = "Нажмите «Подключить Claude» или войдите в приложение Claude на этом Mac.";
-"install.copy_body" = "Запуск с DMG. Скопируйте в «Программы» — так надёжнее работает «Открывать при входе» (без пароля администратора при обычной установке).";
+"install.copy_body" = "Запуск с DMG. Установите приложение, чтобы «Открывать при входе» работало надёжно: в «Программы» или в ~/Applications, если системная папка недоступна для записи. Пароль администратора не нужен.";
 "install.copy_button" = "Скопировать в Программы";
-"install.copy_fail_body" = "Перетащите TrayAILimits.app в «Программы» вручную.\n%@";
-"install.copy_fail_title" = "Не удалось скопировать без пароля";
+"install.copy_fail_body" = "Пробовал /Applications и ~/Applications.\n%@";
+"install.copy_fail_title" = "Не удалось установить приложение";
 "install.copy_title" = "Установить в Программы?";
 "limit.five_week_combo" = "Лимиты 5ч / неделя";
 "limit.included_usage" = "Включённое использование";

@@ -23,6 +23,13 @@ macOS 14+, не нотаризовано (локальная подпись Tray
 - «Открывать при входе» включено по умолчанию
 - Advanced — опциональный импорт из браузера / Safe Storage (может спросить пароль Keychain)
 
+## Что нового в 0.2.20
+
+- Установка из DMG больше не требует пароля администратора: если `/Applications` недоступна для записи (или там чужая копия), приложение ставится в `~/Applications`.
+- Перед установкой приложение закрывает старые запущенные копии, чтобы замена проходила без «файл используется».
+- Новый `./Scripts/trust-signing.sh` — доверие сертификату `TrayAILimits Dev` только для текущего пользователя, без admin (системный trust store не трогается).
+- Обновлены тексты установки и README.
+
 ## Что нового в 0.2.19
 
 - Claude с устаревшим cookie больше не показывается в popover, если он ни разу не дал данных; тревожный треугольник для него тоже не появляется.
@@ -66,9 +73,9 @@ macOS 14+, не нотаризовано (локальная подпись Tray
 
 ## Установка
 
-### DMG (рекомендуется) — v0.2.19
+### DMG (рекомендуется) — v0.2.20
 
-1. Скачайте [**TrayAILimits-0.2.19.dmg**](https://github.com/alebastr12/cursor-limits-tray/releases/download/v0.2.19/TrayAILimits-0.2.19.dmg) или откройте [последний релиз](https://github.com/alebastr12/cursor-limits-tray/releases/latest).
+1. Скачайте [**TrayAILimits-0.2.20.dmg**](https://github.com/alebastr12/cursor-limits-tray/releases/download/v0.2.20/TrayAILimits-0.2.20.dmg) или откройте [последний релиз](https://github.com/alebastr12/cursor-limits-tray/releases/latest).
 2. Перетащите `TrayAILimits.app` в **Программы** (в Finder отображается как **Tray AI limits**).
 3. Первый запуск: правый клик → **Открыть** (приложение не нотаризовано, Gatekeeper спросит подтверждение).
 4. Старую `CursorLimitsTray.app` можно удалить из Программ.
@@ -84,10 +91,10 @@ cd cursor-limits-tray
 export CODESIGN_IDENTITY="TrayAILimits Dev"
 ./Scripts/package-dmg.sh 0.2.18
 ./Scripts/package-release.sh 0.2.18
-open dist/TrayAILimits-0.2.19.dmg
+open dist/TrayAILimits-0.2.20.dmg
 ```
 
-Артефакты релиза: `dist/TrayAILimits-0.2.19.dmg`, `dist/TrayAILimits-0.2.18.zip` и стабильные копии `TrayAILimits-macOS.*`.
+Артефакты релиза: `dist/TrayAILimits-0.2.20.dmg`, `dist/TrayAILimits-0.2.18.zip` и стабильные копии `TrayAILimits-macOS.*`.
 
 Нужны Xcode Command Line Tools / Swift toolchain.
 
@@ -99,6 +106,14 @@ open dist/TrayAILimits-0.2.19.dmg
 ```
 
 `build-app.sh` сам выбирает `CODESIGN_IDENTITY` → «TrayAILimits Dev» → «Apple Development» → ad-hoc. Ad-hoc подпись меняется при каждой пересборке, из-за чего macOS может «забыть» сохранённые сессии и попросить подключить провайдеров заново. Если создан `TrayAILimits Dev`, он имеет приоритет, чтобы обычная пересборка не меняла Keychain ACL.
+
+Доверие сертификату только для текущего пользователя (без пароля администратора):
+
+```bash
+./Scripts/trust-signing.sh
+```
+
+Системный trust store (`-d`) требует admin и для локальной сборки не нужен; notarization это не заменяет.
 
 Тесты:
 
@@ -142,7 +157,7 @@ swift test
 
 «Открывать при входе» **включено по умолчанию** (`SMAppService`). Отключить можно в Настройках.
 
-Если запускаете с DMG, приложение предложит скопировать себя в **Программы** — так login item работает надёжнее, без цикла запросов пароля администратора.
+Если запускаете с DMG, приложение предложит установить себя в **Программы** (а если системная папка недоступна для записи — в `~/Applications`) и закроет старые запущенные копии. Пароль администратора не нужен; так login item работает надёжнее.
 
 ## Диагностика
 
@@ -186,7 +201,7 @@ swift test
 ## Релизы
 
 Все версии и DMG: **[Releases](https://github.com/alebastr12/cursor-limits-tray/releases)**  
-Актуальный: [v0.2.19](https://github.com/alebastr12/cursor-limits-tray/releases/tag/v0.2.19)
+Актуальный: [v0.2.20](https://github.com/alebastr12/cursor-limits-tray/releases/tag/v0.2.20)
 
 ## Лицензия
 
