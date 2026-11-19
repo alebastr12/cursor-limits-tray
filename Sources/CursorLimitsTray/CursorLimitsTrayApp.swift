@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NotificationService.shared.configure()
+        UpdateCoordinator.shared.start()
 
         let args = ProcessInfo.processInfo.arguments
         let snapshotIdx = args.firstIndex(of: "--snapshot")
@@ -110,6 +111,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         claudeOK: p.claudeConnected || !(p.snapshot.claude.rows.isEmpty)
                     )
                 }
+                NSApp.terminate(nil)
+            }
+            return
+        }
+
+        if args.contains("--check-updates") {
+            Task { @MainActor in
+                await UpdateCoordinator.shared.check(manual: true)
+                fputs((UpdateCoordinator.shared.status ?? "no status") + "\n", stdout)
+                fflush(stdout)
                 NSApp.terminate(nil)
             }
             return

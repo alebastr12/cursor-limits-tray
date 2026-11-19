@@ -30,11 +30,13 @@ private enum SettingsProvider {
 
 struct SettingsView: View {
     @ObservedObject var poller: UsagePoller
+    @ObservedObject private var updater = UpdateCoordinator.shared
 
     @State private var pollSeconds: Double = AppPreferences.pollIntervalSeconds
     @State private var demoMode: Bool = AppPreferences.forceDemoMode
     @State private var openAtLogin: Bool = false
     @State private var notificationsEnabled: Bool = AppPreferences.lowBalanceNotificationsEnabled
+    @State private var autoUpdate: Bool = AppPreferences.autoUpdateEnabled
     @State private var showAdvanced = false
     @State private var showSecrets = false
     @State private var hasLegacyCursor = false
@@ -207,6 +209,28 @@ struct SettingsView: View {
                             }
                         }
                     ))
+                }
+
+                Section(L10n.tr("settings.updates")) {
+                    Toggle(L10n.tr("settings.auto_update"), isOn: Binding(
+                        get: { autoUpdate },
+                        set: { enabled in
+                            autoUpdate = enabled
+                            AppPreferences.autoUpdateEnabled = enabled
+                            if enabled {
+                                Task { await updater.check(manual: true) }
+                            }
+                        }
+                    ))
+                    Button(L10n.tr("settings.check_updates")) {
+                        Task { await updater.check(manual: true) }
+                    }
+                    if let status = updater.status {
+                        Text(status)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 DisclosureGroup(L10n.tr("settings.advanced"), isExpanded: $showAdvanced) {

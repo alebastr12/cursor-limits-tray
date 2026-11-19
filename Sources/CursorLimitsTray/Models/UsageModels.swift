@@ -146,6 +146,8 @@ enum AppPreferences {
     static let pollIntervalKey = "pollIntervalSeconds"
     static let demoModeKey = "forceDemoMode"
     static let lowBalanceNotificationsKey = "lowBalanceNotifications"
+    static let autoUpdateKey = "autoUpdateEnabled"
+    static let lastUpdateCheckKey = "lastUpdateCheck"
 
     static var pollIntervalSeconds: Double {
         get {
@@ -165,5 +167,19 @@ enum AppPreferences {
     static var lowBalanceNotificationsEnabled: Bool {
         get { UserDefaults.standard.bool(forKey: lowBalanceNotificationsKey) }
         set { UserDefaults.standard.set(newValue, forKey: lowBalanceNotificationsKey) }
+    }
+
+    /// Opt-out: enabled by default as requested.
+    static var autoUpdateEnabled: Bool {
+        get {
+            if UserDefaults.standard.object(forKey: autoUpdateKey) == nil { return true }
+            return UserDefaults.standard.bool(forKey: autoUpdateKey)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: autoUpdateKey) }
+    }
+
+    static var lastUpdateCheck: Date? {
+        get { UserDefaults.standard.object(forKey: lastUpdateCheckKey) as? Date }
+        set { UserDefaults.standard.set(newValue, forKey: lastUpdateCheckKey) }
     }
 }

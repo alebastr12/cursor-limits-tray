@@ -191,3 +191,25 @@
 "settings.notifications_denied" = "Уведомления запрещены. Разрешите их в Системных настройках → Уведомления.";
 "notification.low_title" = "Мало лимита %@";
 "notification.low_body" = "%@: осталось %d%%";
+
+"settings.updates" = "Обновления";
+"settings.auto_update" = "Автоматически скачивать и устанавливать обновления";
+"settings.check_updates" = "Проверить обновления";
+"update.checking" = "Проверяю обновления…";
+"update.latest" = "Установлена последняя версия.";
+"update.available" = "Доступна версия %@.";
+"update.available_title" = "Доступна версия %@";
+"update.install" = "Установить";
+"update.installing" = "Устанавливаю %@…";
+"update.installed" = "Обновлено до %@. Перезапуск…";
+"update.failed" = "Не удалось обновить: %@";
+"update.failed_title" = "Не удалось обновить";
+"update.no_asset" = "В релизе нет файла для установки.";
+"update.download_failed" = "Не удалось скачать обновление.";
+"update.checksum_missing" = "В релизе нет контрольной суммы.";
+"update.checksum_mismatch" = "Контрольная сумма не совпадает.";
+"update.unzip_failed" = "Не удалось распаковать обновление.";
+"update.invalid_version" = "В скачанном приложении другая версия.";
+"update.permissions" = "Нет прав заменить приложение. Установите DMG вручную.";
+"notification.update_title" = "Tray AI limits обновлён";
+"notification.update_body" = "Версия %@ установлена. Перезапуск.";

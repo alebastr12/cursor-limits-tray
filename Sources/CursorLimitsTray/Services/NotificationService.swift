@@ -38,6 +38,20 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         UNUserNotificationCenter.current().add(request)
     }
 
+    func notifyUpdateInstalled(version: String) {
+        configure()
+        let content = UNMutableNotificationContent()
+        content.title = L10n.tr("notification.update_title")
+        content.body = L10n.tr("notification.update_body", version)
+        content.sound = .default
+        let request = UNNotificationRequest(
+            identifier: "update.\(version)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
+    }
+
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
