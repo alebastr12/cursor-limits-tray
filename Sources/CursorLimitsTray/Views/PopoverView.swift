@@ -1,32 +1,8 @@
 import SwiftUI
 import AppKit
 
-private enum RemovableProvider {
-    case cursor
-    case chatGPT
-    case claude
-
-    var name: String {
-        switch self {
-        case .cursor: return "Cursor"
-        case .chatGPT: return "ChatGPT"
-        case .claude: return "Claude"
-        }
-    }
-
-    @MainActor
-    func remove(from poller: UsagePoller) {
-        switch self {
-        case .cursor: poller.forgetCursor()
-        case .chatGPT: poller.forgetChatGPT()
-        case .claude: poller.forgetClaude()
-        }
-    }
-}
-
 struct PopoverView: View {
     @ObservedObject var poller: UsagePoller
-    @State private var showSettings = false
     @Environment(\.openWindow) private var openWindow
 
     private var anyVisible: Bool {
@@ -50,8 +26,7 @@ struct PopoverView: View {
                     if poller.cursorVisible {
                         ProviderSection(
                             snapshot: poller.snapshot.cursor,
-                            connected: poller.cursorConnected,
-                            onRemove: { confirmRemove(.cursor) }
+                            connected: poller.cursorConnected
                         )
                     }
 
@@ -60,16 +35,14 @@ struct PopoverView: View {
                             snapshot: poller.snapshot.chatGPT,
                             connected: poller.chatGPTConnected,
                             source: poller.chatGPTAutoSource,
-                            onReconnect: poller.chatGPTNeedsReconnect ? { showSettings = true } : nil,
-                            onRemove: { confirmRemove(.chatGPT) }
+                            onReconnect: poller.chatGPTNeedsReconnect ? { openSettingsWindow() } : nil
                         )
                     }
 
                     if poller.claudeVisible {
                         ProviderSection(
                             snapshot: poller.snapshot.claude,
-                            connected: poller.claudeConnected,
-                            onRemove: { confirmRemove(.claude) }
+                            connected: poller.claudeConnected
                         )
                     }
                 }
@@ -81,9 +54,6 @@ struct PopoverView: View {
         .frame(width: PopoverLayout.width, height: popoverHeight)
         .background(WindowBackground())
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .sheet(isPresented: $showSettings) {
-            SettingsView(poller: poller)
-        }
         .onReceive(NotificationCenter.default.publisher(for: .limitsTrayOpenDebugWindow)) { _ in
             openWindow(id: "debug-popover")
         }
@@ -94,24 +64,12 @@ struct PopoverView: View {
         PopoverLayout.height(forVisibleProviders: poller.visibleProviderCount)
     }
 
-    private func confirmRemove(_ provider: RemovableProvider) {
-        StatusItemController.shared.isModalPresented = true
-        defer { StatusItemController.shared.isModalPresented = false }
-
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.messageText = L10n.tr("popover.remove_title", provider.name)
-        alert.informativeText = L10n.tr("popover.remove_message", provider.name)
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: L10n.tr("popover.remove_action"))
-        alert.addButton(withTitle: L10n.tr("common.cancel"))
-        alert.buttons.first?.hasDestructiveAction = true
-        alert.window.level = .mainMenu
-        alert.window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-
-        if alert.runModal() == .alertFirstButtonReturn {
-            provider.remove(from: poller)
-        }
+    /// Settings is a real window, not a sheet: a confirmation alert must not be
+    /// covered by the tray panel.
+    private func openSettingsWindow() {
+        StatusItemController.shared.dismissPanel()
+        TrayLifecycle.beginShowingWindow()
+        SettingsWindowController.shared.show(poller: poller)
     }
 
     private var emptyState: some View {
@@ -122,7 +80,7 @@ struct PopoverView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Button(L10n.settingsEllipsis) { showSettings = true }
+            Button(L10n.settingsEllipsis) { openSettingsWindow() }
                 .buttonStyle(.borderedProminent)
         }
         .padding(12)
@@ -179,7 +137,7 @@ struct PopoverView: View {
             Button(L10n.refresh) { poller.refreshNow() }
                 .keyboardShortcut("r", modifiers: .command)
             Spacer()
-            Button(L10n.settingsEllipsis) { showSettings = true }
+            Button(L10n.settingsEllipsis) { openSettingsWindow() }
             Button(L10n.quit) { NSApplication.shared.terminate(nil) }
                 .keyboardShortcut("q", modifiers: .command)
                 .help(L10n.tr("popover.quit_help"))
@@ -195,7 +153,6 @@ private struct ProviderSection: View {
     var connected: Bool = false
     var source: String?
     var onReconnect: (() -> Void)?
-    var onRemove: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -218,19 +175,7 @@ private struct ProviderSection: View {
                     }
                 }
                 Spacer()
-                HStack(spacing: 6) {
-                    statusChip
-                    if let onRemove {
-                        Button(action: onRemove) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.red)
-                        }
-                        .buttonStyle(.plain)
-                        .help(L10n.tr("popover.remove_help", snapshot.name))
-                        .accessibilityLabel(L10n.tr("popover.remove_help", snapshot.name))
-                    }
-                }
+                statusChip
             }
 
             if connected, let source, !source.isEmpty {

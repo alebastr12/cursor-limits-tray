@@ -19,9 +19,6 @@ struct CursorLimitsTrayApp: App {
         .windowResizability(.contentSize)
         .commandsRemoved()
 
-        Settings {
-            SettingsView(poller: appDelegate.poller)
-        }
     }
 }
 
@@ -48,6 +45,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.activate(ignoringOtherApps: true)
         } else {
             TrayLifecycle.returnToTrayOnly()
+        }
+
+        if !wantsWindow {
+            // The debug Window scene is only for probes; do not leave it on screen
+            // during normal tray use.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                NSApp.windows
+                    .filter { $0.title == "TrayAILimitsDebug" }
+                    .forEach { $0.orderOut(nil) }
+            }
         }
 
         let printTooltipOnly = args.contains("--print-tooltip")
@@ -199,6 +206,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if args.contains("--show-panel") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                 StatusItemController.shared.showPanelForProbe()
+            }
+        }
+
+        if args.contains("--open-settings") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                TrayLifecycle.beginShowingWindow()
+                SettingsWindowController.shared.show(poller: self.poller)
             }
         }
 

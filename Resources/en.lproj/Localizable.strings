@@ -155,17 +155,18 @@
 "tooltip.warning" = "⚠ %@ needs attention";
 "popover.provider_updated" = "updated %@";
 
-"settings.disconnect_provider" = "Disconnect %@";
 "settings.msg_chatgpt_disconnected" = "ChatGPT disconnected.";
 "settings.msg_claude_disconnected" = "Claude disconnected.";
 
 "common.cancel" = "Cancel";
-"popover.remove_title" = "Disconnect %@?";
-"popover.remove_message" = "The saved %@ session will be deleted. You can reconnect it later in Settings.";
-"popover.remove_action" = "Disconnect";
-"popover.remove_help" = "Disconnect %@";
 
 "settings.legacy_cursor_title" = "Move saved Cursor token";
 "settings.legacy_cursor_hint" = "macOS will ask for the login-keychain password once. After that the token lives in the app file and never prompts.";
 "settings.msg_cursor_migrated" = "Cursor token moved.";
 "settings.msg_cursor_migrate_failed" = "Couldn’t move the token. Paste it manually in Advanced.";
+
+"settings.remove_title" = "Disconnect %@?";
+"settings.remove_message" = "The saved %@ session will be deleted. You can reconnect it later.";
+"settings.remove_action" = "Disconnect";
+"settings.remove_help" = "Disconnect %@";
+"settings.msg_cursor_disconnected" = "Cursor disconnected.";

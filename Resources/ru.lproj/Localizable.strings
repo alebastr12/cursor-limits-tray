@@ -155,17 +155,18 @@
 "tooltip.warning" = "⚠ %@: требуется внимание";
 "popover.provider_updated" = "обновлено %@";
 
-"settings.disconnect_provider" = "Отключить %@";
 "settings.msg_chatgpt_disconnected" = "ChatGPT отключён.";
 "settings.msg_claude_disconnected" = "Claude отключён.";
 
 "common.cancel" = "Отмена";
-"popover.remove_title" = "Отключить %@?";
-"popover.remove_message" = "Сохранённая сессия %@ будет удалена. Подключить заново можно в Настройках.";
-"popover.remove_action" = "Отключить";
-"popover.remove_help" = "Отключить %@";
 
 "settings.legacy_cursor_title" = "Перенести сохранённый токен Cursor";
 "settings.legacy_cursor_hint" = "macOS один раз спросит пароль login Keychain. После этого токен хранится в файле приложения и больше не спрашивает.";
 "settings.msg_cursor_migrated" = "Токен Cursor перенесён.";
 "settings.msg_cursor_migrate_failed" = "Не удалось перенести. Вставьте токен вручную в Advanced.";
+
+"settings.remove_title" = "Отключить %@?";
+"settings.remove_message" = "Сохранённая сессия %@ будет удалена. Подключить заново можно позже.";
+"settings.remove_action" = "Отключить";
+"settings.remove_help" = "Отключить %@";
+"settings.msg_cursor_disconnected" = "Cursor отключён.";

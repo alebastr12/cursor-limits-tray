@@ -2,9 +2,31 @@ import SwiftUI
 import AppKit
 import ServiceManagement
 
+private enum SettingsProvider {
+    case cursor
+    case chatGPT
+    case claude
+
+    var name: String {
+        switch self {
+        case .cursor: return "Cursor"
+        case .chatGPT: return "ChatGPT"
+        case .claude: return "Claude"
+        }
+    }
+
+    @MainActor
+    func remove(from poller: UsagePoller) {
+        switch self {
+        case .cursor: poller.forgetCursor()
+        case .chatGPT: poller.forgetChatGPT()
+        case .claude: poller.forgetClaude()
+        }
+    }
+}
+
 struct SettingsView: View {
     @ObservedObject var poller: UsagePoller
-    @Environment(\.dismiss) private var dismiss
 
     @State private var pollSeconds: Double = AppPreferences.pollIntervalSeconds
     @State private var demoMode: Bool = AppPreferences.forceDemoMode
@@ -12,6 +34,7 @@ struct SettingsView: View {
     @State private var showAdvanced = false
     @State private var showSecrets = false
     @State private var hasLegacyCursor = false
+    @State private var providerToRemove: SettingsProvider?
     @State private var manualChatCookie = ""
     @State private var manualCursorCookie = ""
     @State private var manualClaudeCookie = ""
@@ -33,7 +56,10 @@ struct SettingsView: View {
                     ok: poller.cursorConnected,
                     detail: poller.cursorConnected
                         ? L10n.tr("settings.cursor_ok")
-                        : L10n.tr("settings.cursor_need")
+                        : L10n.tr("settings.cursor_need"),
+                    onRemove: (poller.cursorConnected || poller.cursorConfigured || hasLegacyCursor)
+                        ? { requestRemove(.cursor) }
+                        : nil
                 )
 
                 if hasLegacyCursor {
@@ -61,7 +87,8 @@ struct SettingsView: View {
                 connectionRow(
                     title: "ChatGPT",
                     ok: poller.chatGPTConnected,
-                    detail: chatDetail
+                    detail: chatDetail,
+                    onRemove: poller.chatGPTConfigured ? { requestRemove(.chatGPT) } : nil
                 )
 
                 if !poller.chatGPTConnected {
@@ -87,24 +114,11 @@ struct SettingsView: View {
                     }
                 }
 
-                if poller.chatGPTConfigured {
-                    Button {
-                        poller.forgetChatGPT()
-                        manualChatCookie = ""
-                        statusIsError = false
-                        statusMessage = L10n.tr("settings.msg_chatgpt_disconnected")
-                    } label: {
-                        Text(L10n.tr("settings.disconnect_provider", "ChatGPT"))
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-
                 connectionRow(
                     title: "Claude",
                     ok: poller.claudeConfigured && poller.claudeConnected,
-                    detail: claudeDetail
+                    detail: claudeDetail,
+                    onRemove: poller.claudeConfigured ? { requestRemove(.claude) } : nil
                 )
 
                 if !poller.claudeConfigured || !poller.claudeConnected {
@@ -128,20 +142,6 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                         .fixedSize(horizontal: false, vertical: true)
-                }
-
-                if poller.claudeConfigured {
-                    Button {
-                        poller.forgetClaude()
-                        manualClaudeCookie = ""
-                        statusIsError = false
-                        statusMessage = L10n.tr("settings.msg_claude_disconnected")
-                    } label: {
-                        Text(L10n.tr("settings.disconnect_provider", "Claude"))
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
                 }
             }
             .padding(14)
@@ -237,13 +237,28 @@ struct SettingsView: View {
                     statusMessage = L10n.tr("settings.msg_secrets_cleared")
                 }
                 Spacer()
-                Button(L10n.close) { dismiss() }
+                Button(L10n.close) { closeSettingsWindow() }
                 Button(L10n.save) { save() }
                     .keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
         .frame(width: 500, height: 620)
+        .alert(
+            providerToRemove.map { L10n.tr("settings.remove_title", $0.name) } ?? "",
+            isPresented: removalAlertPresented,
+            presenting: providerToRemove
+        ) { provider in
+            Button(L10n.tr("settings.remove_action"), role: .destructive) {
+                performRemove(provider)
+            }
+            Button(L10n.tr("common.cancel"), role: .cancel) {
+                providerToRemove = nil
+                StatusItemController.shared.isModalPresented = false
+            }
+        } message: { provider in
+            Text(L10n.tr("settings.remove_message", provider.name))
+        }
         .onAppear {
             openAtLogin = LoginItemBootstrap.prefersOpenAtLogin
             hasLegacyCursor = SessionSecrets.hasLegacyCursorToken
@@ -273,7 +288,12 @@ struct SettingsView: View {
         return L10n.tr("settings.claude_need")
     }
 
-    private func connectionRow(title: String, ok: Bool, detail: String) -> some View {
+    private func connectionRow(
+        title: String,
+        ok: Bool,
+        detail: String,
+        onRemove: (() -> Void)? = nil
+    ) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Circle()
                 .fill(ok ? Color.green : Color.orange)
@@ -284,12 +304,66 @@ struct SettingsView: View {
                 Text(detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
             Text(ok ? L10n.ok : "…")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(ok ? .green : .secondary)
+                .padding(.top, 2)
+            if let onRemove {
+                Button(action: onRemove) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.red)
+                }
+                .buttonStyle(.plain)
+                .help(L10n.tr("settings.remove_help", title))
+                .accessibilityLabel(L10n.tr("settings.remove_help", title))
+            }
         }
+    }
+
+    private func closeSettingsWindow() {
+        NSApp.windows
+            .first(where: { $0.isVisible && TrayLifecycle.isSettingsLikeWindow($0) })?
+            .close()
+    }
+
+    private var removalAlertPresented: Binding<Bool> {
+        Binding(
+            get: { providerToRemove != nil },
+            set: { presented in
+                if !presented {
+                    providerToRemove = nil
+                    StatusItemController.shared.isModalPresented = false
+                }
+            }
+        )
+    }
+
+    private func requestRemove(_ provider: SettingsProvider) {
+        StatusItemController.shared.isModalPresented = true
+        providerToRemove = provider
+    }
+
+    private func performRemove(_ provider: SettingsProvider) {
+        provider.remove(from: poller)
+        statusIsError = false
+        switch provider {
+        case .cursor:
+            manualCursorCookie = ""
+            hasLegacyCursor = SessionSecrets.hasLegacyCursorToken
+            statusMessage = L10n.tr("settings.msg_cursor_disconnected")
+        case .chatGPT:
+            manualChatCookie = ""
+            statusMessage = L10n.tr("settings.msg_chatgpt_disconnected")
+        case .claude:
+            manualClaudeCookie = ""
+            statusMessage = L10n.tr("settings.msg_claude_disconnected")
+        }
+        providerToRemove = nil
+        StatusItemController.shared.isModalPresented = false
     }
 
     private func secretField(_ title: String, text: Binding<String>) -> some View {
@@ -355,6 +429,6 @@ struct SettingsView: View {
         poller.refreshNow()
         statusIsError = false
         statusMessage = L10n.tr("settings.msg_saved")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { dismiss() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { closeSettingsWindow() }
     }
 }

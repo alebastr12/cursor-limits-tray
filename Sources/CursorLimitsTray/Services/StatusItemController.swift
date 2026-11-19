@@ -424,6 +424,11 @@ final class StatusItemController: NSObject {
 
     // MARK: - Main panel
 
+    /// Close the panel before opening a normal Settings window.
+    func dismissPanel() {
+        hidePanel()
+    }
+
     func showPanelForProbe() {
         if isPresented { return }
         showPanel()
